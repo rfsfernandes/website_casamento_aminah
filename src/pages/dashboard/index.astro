@@ -1,0 +1,708 @@
+---
+import Base from '../../layouts/Base.astro';
+import { computeStats, listRsvps } from '../../lib/db';
+import { RSVP_FECHA_EM, idadeCurta, idadeLabel, rsvpFechado } from '../../lib/rsvp';
+
+export const prerender = false;
+
+const rows = await listRsvps();
+const s = computeStats(rows);
+const pct = (n: number) => (s.respostas ? Math.round((n / s.respostas) * 100) : 0);
+
+const DIA = 86_400_000;
+const hoje = Date.now();
+const diasPrazo = Math.ceil((Date.parse(RSVP_FECHA_EM) - hoje) / DIA);
+const fechado = rsvpFechado(hoje);
+const diasCasamento = Math.ceil((Date.UTC(2027, 8, 5, 15) - hoje) / DIA);
+
+const maxDia = Math.max(1, ...s.porDia.map((d) => d.sim + d.nao));
+const fmtData = new Intl.DateTimeFormat('pt-PT', {
+  day: '2-digit',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Europe/Lisbon',
+});
+const fmtDia = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+const apagado = Astro.url.searchParams.has('apagado');
+const r = s.restricoes;
+const respRestr = r.sim + r.nao;
+const pctI = (n: number) => (s.totalPessoas ? Math.round((n / s.totalPessoas) * 100) : 0);
+const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
+---
+
+<Base title="Dashboard · RSVP Aminah & Luís" noindex>
+  <div class="dash">
+    <header class="topo">
+      <div>
+        <p class="sobre">Aminah <span class="e">e</span> Luís · 05.09.2027</p>
+        <h1>Respostas ao RSVP</h1>
+      </div>
+      <div class="acoes">
+        <a class="btn" href="/dashboard/respostas.csv">Exportar CSV</a>
+        <form method="post" action="/dashboard/logout"><button class="btn btn--linha" type="submit">Sair</button></form>
+      </div>
+    </header>
+
+    {apagado && <p class="aviso" role="status">Resposta apagada.</p>}
+
+    <section class="kpis" aria-label="Resumo">
+      <div class="kpi kpi--destaque">
+        <span class="kpi__n">{s.totalPessoas}</span>
+        <span class="kpi__l">pessoas confirmadas</span>
+        <span class="kpi__s">{s.vao} convidados + {s.acompanhantes} acompanhantes</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__n">{s.respostas}</span>
+        <span class="kpi__l">respostas</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__n">{s.vao}</span>
+        <span class="kpi__l">vão</span>
+        <span class="kpi__s">{pct(s.vao)}%</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__n">{s.naoVao}</span>
+        <span class="kpi__l">não vão</span>
+        <span class="kpi__s">{pct(s.naoVao)}%</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__n">{r.sim}</span>
+        <span class="kpi__l">com restrições alimentares</span>
+        <span class="kpi__s">de {s.totalPessoas} pessoas{r.semDetalhe > 0 && ` · ${r.semDetalhe} sem detalhe`}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__n">{fechado ? '✓' : diasPrazo}</span>
+        <span class="kpi__l">{fechado ? 'RSVP encerrado' : 'dias até ao prazo'}</span>
+        <span class="kpi__s">15 jul 2027 · casamento em {Math.max(0, diasCasamento)} dias</span>
+      </div>
+    </section>
+
+    <div class="grelha">
+      <section class="painel">
+        <h2>Presença</h2>
+        {
+          s.respostas === 0 ? (
+            <p class="vazio">Ainda sem respostas.</p>
+          ) : (
+            <>
+              <div class="barra" role="img" aria-label={`${s.vao} vão, ${s.naoVao} não vão`}>
+                <span class="barra__sim" style={`width:${pct(s.vao)}%`} />
+                <span class="barra__nao" style={`width:${pct(s.naoVao)}%`} />
+              </div>
+              <ul class="legenda">
+                <li>
+                  <i class="ponto ponto--sim" /> Vão <b>{s.vao}</b>
+                </li>
+                <li>
+                  <i class="ponto ponto--nao" /> Não vão <b>{s.naoVao}</b>
+                </li>
+              </ul>
+            </>
+          )
+        }
+
+        <h2>Idades</h2>
+        {
+          s.totalPessoas === 0 ? (
+            <p class="vazio">—</p>
+          ) : (
+            <>
+              <div class="barra" role="img" aria-label={s.idades.map((g) => `${g.n} ${idadeLabel(g.id)}`).join(', ')}>
+                {s.idades.map((g) => (
+                  <span class={`idade--${g.id ?? 'na'}`} style={`width:${pctI(g.n)}%`} />
+                ))}
+              </div>
+              <ul class="idades">
+                {s.idades.map((g) => (
+                  <li>
+                    <i class={`ponto idade--${g.id ?? 'na'}`} />
+                    <span>{idadeLabel(g.id)}</span>
+                    <b>{g.n}</b>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )
+        }
+
+        <h2>Respostas por dia</h2>
+        {
+          s.porDia.length === 0 ? (
+            <p class="vazio">—</p>
+          ) : (
+            <ol class="dias">
+              {s.porDia.slice(-21).map((d) => (
+                <li>
+                  <span class="dias__d">{fmtDia.format(new Date(d.dia))}</span>
+                  <span class="dias__barra">
+                    <span class="barra__sim" style={`width:${(d.sim / maxDia) * 100}%`} />
+                    <span class="barra__nao" style={`width:${(d.nao / maxDia) * 100}%`} />
+                  </span>
+                  <span class="dias__n">{d.sim + d.nao}</span>
+                </li>
+              ))}
+            </ol>
+          )
+        }
+      </section>
+
+      <section class="painel">
+        <h2>Restrições alimentares</h2>
+        {
+          respRestr === 0 ? (
+            <p class="vazio">Ainda sem respostas.</p>
+          ) : (
+            <>
+              <div class="barra" role="img" aria-label={`${r.sim} com restrições, ${r.nao} sem restrições`}>
+                <span class="barra__restr" style={`width:${pctR(r.sim)}%`} />
+                <span class="barra__semrestr" style={`width:${pctR(r.nao)}%`} />
+              </div>
+              <ul class="legenda">
+                <li>
+                  <i class="ponto ponto--restr" /> Com restrições <b>{r.sim}</b>
+                </li>
+                <li>
+                  <i class="ponto ponto--semrestr" /> Sem restrições <b>{r.nao}</b>
+                </li>
+                {r.semResposta > 0 && (
+                  <li>
+                    Sem resposta <b>{r.semResposta}</b>
+                  </li>
+                )}
+              </ul>
+              {r.lista.length > 0 && (
+                <ul class="restricoes">
+                  {r.lista.map((p) => (
+                    <li>
+                      <b>
+                        {p.nome}
+                        {p.de && <span class="de"> · acompanhante de {p.de}</span>}
+                      </b>
+                      <span class={p.qual ? '' : 'mute'}>{p.qual || 'Disse que sim, mas não especificou'}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )
+        }
+      </section>
+    </div>
+
+    <section class="painel">
+      <div class="tabela-topo">
+        <h2>Todas as respostas</h2>
+        <input type="search" id="filtro" placeholder="Procurar nome…" aria-label="Procurar por nome" />
+      </div>
+      {
+        rows.length === 0 ? (
+          <p class="vazio">Quando alguém responder, aparece aqui.</p>
+        ) : (
+          <div class="tabela-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Vai?</th>
+                  <th>Pessoas</th>
+                  <th>Acompanhantes</th>
+                  <th>Restrições</th>
+                  <th>Data</th>
+                  <th>
+                    <span class="sr-only">Ações</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const acomp = row.pessoas.slice(1);
+                  const restr = row.pessoas.filter((p) => p.restricao === 1);
+                  return (
+                  <tr data-nome={row.pessoas.map((p) => p.nome).concat(row.nome).join(' ').toLowerCase()}>
+                    <td data-l="Nome">
+                      <b>{row.nome}</b>
+                    </td>
+                    <td data-l="Vai?">
+                      <span class={`tag ${row.vai ? 'tag--sim' : 'tag--nao'}`}>{row.vai ? 'Sim' : 'Não'}</span>
+                    </td>
+                    <td data-l="Pessoas" class={row.vai ? 'num' : 'num mute'}>
+                      {row.vai ? 1 + row.acompanhantes : '—'}
+                    </td>
+                    <td data-l="Acompanhantes" class={acomp.length ? '' : 'mute'}>
+                      {acomp.length ? (
+                        <ul class="lista-acomp">
+                          {acomp.map((p) => (
+                            <li>
+                              {p.nome} <span class={`tag-idade idade-t--${p.idade ?? 'na'}`}>{idadeCurta(p.idade)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td data-l="Restrições" class={restr.length ? '' : 'mute'}>
+                      {!row.vai
+                        ? '—'
+                        : restr.length === 0
+                          ? 'Nenhuma'
+                          : (
+                              <ul class="lista-restr">
+                                {restr.map((p) => (
+                                  <li>
+                                    <b>{p.nome}:</b> {p.restricao_qual || 'sim, sem detalhe'}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                    </td>
+                    <td data-l="Data" class="mute">
+                      {fmtData.format(new Date(row.criado_em))}
+                      {!row.email_enviado && <span class="sem-email" title="O email desta resposta não foi enviado">sem email</span>}
+                    </td>
+                    <td>
+                      <form
+                        method="post"
+                        action="/api/admin/apagar"
+                        class="apagar"
+                        data-nome={row.nome}
+                      >
+                        <input type="hidden" name="id" value={row.id} />
+                        <button type="submit" class="link">Apagar</button>
+                      </form>
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </section>
+  </div>
+</Base>
+
+<script>
+  const filtro = document.querySelector<HTMLInputElement>('#filtro');
+  filtro?.addEventListener('input', () => {
+    const q = filtro.value.trim().toLowerCase();
+    document.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach((tr) => {
+      tr.hidden = !!q && !(tr.dataset.nome ?? '').includes(q);
+    });
+  });
+  document.querySelectorAll<HTMLFormElement>('form.apagar').forEach((f) =>
+    f.addEventListener('submit', (e) => {
+      if (!confirm(`Apagar a resposta de ${f.dataset.nome}? Não dá para desfazer.`)) e.preventDefault();
+    }),
+  );
+</script>
+
+<style>
+  :global(body) {
+    background: #f6efe3;
+  }
+  .dash {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 16px 64px;
+    color: var(--verde);
+  }
+  .topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .sobre {
+    margin: 0;
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.85rem;
+    color: var(--oliva);
+  }
+  .e {
+    font-family: var(--f-script);
+    text-transform: none;
+    font-size: 1.4em;
+  }
+  h1 {
+    font-family: var(--f-titulo);
+    font-weight: 400;
+    text-transform: uppercase;
+    font-size: clamp(2.2rem, 6vw, 3.4rem);
+    line-height: 1.05;
+    margin: 4px 0 0;
+  }
+  h2 {
+    font-family: var(--f-caps);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.95rem;
+    margin: 0 0 14px;
+  }
+  .acoes {
+    display: flex;
+    gap: 8px;
+  }
+  .acoes form {
+    margin: 0;
+  }
+  .btn {
+    display: inline-block;
+    font-family: var(--f-caps);
+    font-size: 0.95rem;
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--verde);
+    background: var(--verde);
+    color: var(--bege);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn--linha {
+    background: transparent;
+    color: var(--verde);
+  }
+  .aviso {
+    background: var(--azul);
+    padding: 10px 14px;
+    border-radius: 8px;
+  }
+  .kpis {
+    display: grid;
+    grid-template-columns: 1.6fr repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .kpi {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: grid;
+    align-content: start;
+    gap: 2px;
+  }
+  .kpi--destaque {
+    background: var(--verde);
+    color: var(--bege);
+  }
+  .kpi__n {
+    font-family: var(--f-titulo);
+    font-variation-settings: 'opsz' 100;
+    font-size: 3rem;
+    line-height: 1;
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+  .kpi__l {
+    font-family: var(--f-caps);
+    font-size: 0.95rem;
+  }
+  .kpi__s {
+    font-size: 0.82rem;
+    opacity: 0.75;
+  }
+  .grelha {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .painel {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 0;
+  }
+  .painel h2:not(:first-child) {
+    margin-top: 28px;
+  }
+  .vazio {
+    color: var(--oliva);
+    margin: 0;
+  }
+  .barra,
+  .dias__barra {
+    display: flex;
+    height: 14px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #eee;
+    gap: 2px;
+  }
+  .barra__sim {
+    background: var(--verde);
+  }
+  .barra__nao {
+    background: #c9a27a;
+  }
+  .legenda {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+    display: flex;
+    gap: 18px;
+    font-size: 0.95rem;
+  }
+  .ponto {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+  }
+  .ponto--sim {
+    background: var(--verde);
+  }
+  .ponto--nao {
+    background: #c9a27a;
+  }
+  .barra__restr,
+  .ponto--restr {
+    background: #b5763a;
+  }
+  .barra__semrestr,
+  .ponto--semrestr {
+    background: var(--salva);
+  }
+  .restricoes {
+    margin-top: 16px !important;
+  }
+  .de {
+    font-weight: 400;
+    color: var(--oliva);
+    font-size: 0.88em;
+  }
+  .idade--10mais {
+    background: var(--verde);
+  }
+  .idade--5a9 {
+    background: #8fb8c9;
+  }
+  .idade--ate4 {
+    background: #e2b86f;
+  }
+  .idade--na {
+    background: #ddd;
+  }
+  .idades {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+    display: grid;
+    gap: 4px;
+    font-size: 0.95rem;
+  }
+  .idades li {
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    align-items: center;
+  }
+  .idades b {
+    font-variant-numeric: tabular-nums;
+  }
+  .lista-acomp {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 3px;
+  }
+  .tag-idade {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 0 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    background: #e7efe4;
+    color: var(--verde);
+  }
+  .idade-t--5a9 {
+    background: #dcebf1;
+    color: #2f5868;
+  }
+  .idade-t--ate4 {
+    background: #f6e6c7;
+    color: #7a5413;
+  }
+  .lista-restr {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .dias {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .dias li {
+    display: grid;
+    grid-template-columns: 64px 1fr 28px;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+  }
+  .dias__barra {
+    background: transparent;
+    height: 10px;
+  }
+  .dias__barra span:first-child {
+    border-radius: 999px 0 0 999px;
+  }
+  .dias__barra span:last-child {
+    border-radius: 0 999px 999px 0;
+  }
+  .dias__n {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .restricoes {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .restricoes li {
+    display: grid;
+    gap: 2px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee5d6;
+  }
+  .tabela-topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .tabela-topo h2 {
+    margin: 0;
+  }
+  #filtro {
+    font: inherit;
+    padding: 8px 12px;
+    border: 1px solid #d9cfbd;
+    border-radius: 999px;
+    min-width: 0;
+    width: min(100%, 260px);
+  }
+  .tabela-wrap {
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+  th {
+    text-align: left;
+    font-family: var(--f-caps);
+    font-weight: 400;
+    font-size: 0.85rem;
+    color: var(--oliva);
+    padding: 10px 8px;
+    border-bottom: 1px solid #eee5d6;
+  }
+  td {
+    padding: 12px 8px;
+    border-bottom: 1px solid #f1ebe0;
+    vertical-align: top;
+  }
+  .mute {
+    color: #8a8670;
+  }
+  .tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+  }
+  .tag--sim {
+    background: #dfe8dc;
+  }
+  .tag--nao {
+    background: #f1e2d0;
+  }
+  .apagar {
+    margin: 0;
+  }
+  .sem-email {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.72rem;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: #f6e3cf;
+    color: #8a5a2b;
+  }
+  .link {
+    font: inherit;
+    font-size: 0.85rem;
+    background: none;
+    border: 0;
+    color: #a3261b;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+  }
+  @media (max-width: 980px) {
+    .kpis {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  @media (max-width: 760px) {
+    .kpis {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .grelha {
+      grid-template-columns: 1fr;
+    }
+    .kpi--destaque,
+    .kpi:last-child {
+      grid-column: 1 / -1;
+    }
+    thead {
+      display: none;
+    }
+    table,
+    tbody,
+    tr,
+    td {
+      display: block;
+    }
+    tr {
+      padding: 10px 0;
+      border-bottom: 1px solid #eee5d6;
+    }
+    tr[hidden] {
+      display: none;
+    }
+    td {
+      border: 0;
+      padding: 3px 0;
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 8px;
+    }
+    td[data-l]::before {
+      content: attr(data-l);
+      font-family: var(--f-caps);
+      font-size: 0.8rem;
+      color: var(--oliva);
+    }
+  }
+</style>

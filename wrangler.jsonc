@@ -1,0 +1,32 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"compatibility_date": "2026-11-10",
+	"compatibility_flags": ["global_fetch_strictly_public"],
+	"name": "casamento-aminah-luis",
+	"main": "@astrojs/cloudflare/entrypoints/server",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
+	"workers_dev": true,
+	"preview_urls": false,
+	"observability": {
+		"enabled": true
+	},
+	// Base de dados com as respostas ao RSVP.
+	// Criada com `npx wrangler d1 create casamento-rsvp` (região WEUR).
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "casamento-rsvp",
+			"database_id": "48c22c6b-a16a-43d1-bfc7-db80c96c0692",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Valores não secretos. Os segredos (RESEND_API_KEY, DASHBOARD_PASSWORD, RSVP_TO_EMAIL)
+	// definem-se com `npx wrangler secret put <NOME>` e, em local, no ficheiro .dev.vars.
+	// RSVP_TO_EMAIL é segredo para o email pessoal dos noivos não ficar no repositório público.
+	"vars": {
+		"RSVP_FROM_EMAIL": "Casamento Aminah & Luís <rsvp@virtusprompt.com>"
+	}
+}

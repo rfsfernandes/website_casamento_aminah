@@ -1,0 +1,99 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+  noindex?: boolean;
+}
+const { title, description = '', noindex = false } = Astro.props;
+---
+
+<!doctype html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <meta name="theme-color" content="#3e513c" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {description && <meta property="og:title" content={title} />}
+    {description && <meta property="og:description" content={description} />}
+    {description && <meta property="og:image" content={new URL('/img/og.jpg', Astro.site ?? Astro.url).href} />}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Imbue:opsz,wght@10..100,300..500&family=Marcellus&family=Pinyon+Script&family=Questrial&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --verde: #3e513c;
+    --verde-escuro: #2f3e2e;
+    --bege: #f3dbb9;
+    --salva: #b4b49f;
+    --oliva: #99967c;
+    --azul: #b1d4e0;
+    --branco: #f0f0fa;
+    --f-titulo: 'Imbue', 'Didot', 'Bodoni 72', Georgia, serif;
+    --f-caps: 'Marcellus', 'Trajan Pro', Georgia, serif;
+    --f-texto: 'Questrial', 'Avenir Next', 'Helvetica Neue', Arial, sans-serif;
+    --f-script: 'Pinyon Script', 'Snell Roundhand', cursive;
+    --gutter: clamp(16px, 5.6vw, 77px);
+    --max: 1366px;
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+  body {
+    margin: 0;
+    background: var(--verde);
+    color: var(--verde);
+    font-family: var(--f-texto);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+  a {
+    color: inherit;
+  }
+  :focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>

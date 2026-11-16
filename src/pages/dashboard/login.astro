@@ -1,0 +1,111 @@
+---
+import Base from '../../layouts/Base.astro';
+import { COOKIE_NAME, checkPassword, createSessionCookie, isConfigured, isValidSession } from '../../lib/auth';
+
+export const prerender = false;
+
+if (await isValidSession(Astro.cookies.get(COOKIE_NAME)?.value)) return Astro.redirect('/dashboard', 303);
+
+let erro = '';
+if (!isConfigured()) {
+  erro = 'O dashboard ainda não tem palavra-passe configurada (DASHBOARD_PASSWORD, mínimo 8 caracteres).';
+} else if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const pw = String(data.get('password') ?? '');
+  if (await checkPassword(pw)) {
+    const { value, maxAge } = await createSessionCookie();
+    Astro.cookies.set(COOKIE_NAME, value, {
+      httpOnly: true,
+      secure: Astro.url.protocol === 'https:',
+      sameSite: 'strict',
+      path: '/',
+      maxAge,
+    });
+    return Astro.redirect('/dashboard', 303);
+  }
+  // Pequena pausa para tornar tentativas em série mais lentas.
+  await new Promise((r) => setTimeout(r, 800));
+  erro = 'Palavra-passe incorreta.';
+  Astro.response.status = 401;
+}
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Base title="Entrar · Dashboard RSVP" noindex>
+  <main class="login">
+    <form method="post" class="caixa">
+      <p class="sobre">Aminah <span class="e">e</span> Luís</p>
+      <h1>Dashboard</h1>
+      <label for="password">Palavra-passe</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus />
+      {erro && <p class="erro" role="alert">{erro}</p>}
+      <button type="submit">Entrar</button>
+    </form>
+  </main>
+</Base>
+
+<style>
+  .login {
+    min-height: 100svh;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: var(--verde);
+  }
+  .caixa {
+    width: min(100%, 380px);
+    background: var(--bege);
+    border-radius: 12px;
+    padding: 32px 28px;
+    display: grid;
+    gap: 12px;
+  }
+  .sobre {
+    margin: 0;
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    text-align: center;
+  }
+  .e {
+    font-family: var(--f-script);
+    text-transform: none;
+    font-size: 1.4em;
+  }
+  h1 {
+    font-family: var(--f-titulo);
+    font-weight: 400;
+    text-transform: uppercase;
+    text-align: center;
+    font-size: 2.8rem;
+    margin: 0 0 8px;
+  }
+  label {
+    font-family: var(--f-caps);
+  }
+  input {
+    font: inherit;
+    font-size: 1rem;
+    padding: 12px;
+    border: 1px solid var(--oliva);
+    border-radius: 6px;
+    background: #fff;
+  }
+  button {
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 1.05rem;
+    padding: 14px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--verde);
+    color: var(--bege);
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .erro {
+    color: #a3261b;
+    margin: 0;
+  }
+</style>

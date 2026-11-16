@@ -1,0 +1,7 @@
+# Copia para .dev.vars (não vai para o git) para testar em local.
+# Palavra-passe do dashboard (/dashboard)
+DASHBOARD_PASSWORD=muda-isto
+# Chave da API do Resend (opcional em local: sem ela, o email é ignorado e a resposta fica só na base de dados)
+RESEND_API_KEY=
+# Quem recebe os emails de RSVP (em produção é um segredo)
+RSVP_TO_EMAIL=
