@@ -88,8 +88,8 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
     </section>
 
     <section class="painel codigo-painel" id="codigo">
+      <h2>Código do convite</h2>
       <div>
-        <h2>Código do convite</h2>
         {
           codigo ? (
             <>
@@ -723,11 +723,19 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
   .codigo-painel {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px 24px;
+    gap: 0 24px;
+    align-items: start;
     margin-bottom: 16px;
+  }
+  /* O título ocupa a largura toda: as duas colunas começam à mesma altura. */
+  .codigo-painel h2 {
+    grid-column: 1 / -1;
   }
   .codigo-painel p {
     margin: 0 0 8px;
+  }
+  .codigo-painel .aviso {
+    margin: 0;
   }
   .codigo {
     font-family: var(--f-caps);
