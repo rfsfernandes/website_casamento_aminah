@@ -1,0 +1,24 @@
+---
+import Convite from '../../components/Convite.astro';
+import { lerConvite } from '../../lib/convites';
+import { findRsvpByConvite } from '../../lib/db';
+
+// Link pessoal: abre o convite sem código e é também onde se altera a resposta.
+export const prerender = false;
+
+const convite = await lerConvite(Astro.params.token ?? '');
+const ativo = !!convite && !convite.desativado_em;
+const resposta = ativo ? await findRsvpByConvite(convite.id) : null;
+
+if (!ativo) Astro.response.status = 404;
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+// O link é secreto: não o passar a outros sites (ex.: ao abrir o mapa).
+Astro.response.headers.set('Referrer-Policy', 'same-origin');
+---
+
+<Convite
+  modo={ativo ? 'convite' : 'inativo'}
+  convite={ativo ? { id: convite.id, nome: convite.nome, lugares: convite.lugares } : null}
+  resposta={resposta}
+  noindex
+/>

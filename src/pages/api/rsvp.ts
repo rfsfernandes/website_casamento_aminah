@@ -1,20 +1,42 @@
 import type { APIRoute } from 'astro';
 import { waitUntil } from 'cloudflare:workers';
-import { insertRsvp, markEmailSent, type Pessoa, type RsvpInput } from '../../lib/db';
+import {
+  findRsvpByConvite,
+  findRsvpByEdicao,
+  insertRsvp,
+  markEmailSent,
+  updateRsvp,
+  type Pessoa,
+  type Rsvp,
+  type RsvpInput,
+} from '../../lib/db';
 import { IDADE_ADULTO, MAX_ACOMPANHANTES, idadeValida, interpretarRestricao, rsvpFechado } from '../../lib/rsvp';
-import { sendRsvpEmail } from '../../lib/email';
+import { enviarConfirmacao, sendRsvpEmail } from '../../lib/email';
+import { temAcesso } from '../../lib/acesso';
+import { lerConvite, limparEmail, type Convite } from '../../lib/convites';
+import { ipDe, permitir, sha256, tokenAleatorio } from '../../lib/seguranca';
 
 export const prerender = false;
 
 const clean = (v: FormDataEntryValue | null, max: number) =>
   (typeof v === 'string' ? v : '').replace(/\s+/g, ' ').trim().slice(0, max);
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+/**
+ * Grava uma resposta. Há três caminhos:
+ * - `convite`: link pessoal (/c/<id>). Uma resposta por convite; responder outra vez altera-a.
+ * - `edicao`: link de alteração (/r/<token>) que recebe quem respondeu com o código.
+ * - nenhum: resposta nova pelo convite impresso (precisa do código, se estiver definido).
+ */
+export const POST: APIRoute = async ({ request, redirect, cookies, url }) => {
   const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
+  let pagina = '/';
   const reply = (status: number, body: Record<string, unknown>) =>
     wantsJson
       ? Response.json(body, { status })
-      : redirect(body.fechado ? '/?rsvp=fechado#rsvp' : status < 400 ? '/?rsvp=ok#rsvp' : '/?rsvp=erro#rsvp', 303);
+      : redirect(
+          `${typeof body.pagina === 'string' ? body.pagina : pagina}?rsvp=${body.fechado ? 'fechado' : status < 400 ? 'ok' : 'erro'}#rsvp`,
+          303,
+        );
 
   if (rsvpFechado())
     return reply(410, { ok: false, fechado: true, error: 'As confirmações de presença já estão encerradas.' });
@@ -29,18 +51,57 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   // Campo-armadilha para bots: pessoas não o veem, por isso deve vir vazio.
   if (clean(form.get('website'), 200)) return reply(200, { ok: true });
 
+  if (!(await permitir(`rsvp:${ipDe(request)}`, 12, 600)))
+    return reply(429, { ok: false, error: 'Demasiadas respostas seguidas. Espera uns minutos e tenta de novo.' });
+
+  // De onde vem a resposta.
+  const conviteId = clean(form.get('convite'), 60);
+  const edicao = clean(form.get('edicao'), 60);
+  let convite: Convite | null = null;
+  let existente: Rsvp | null = null;
+  let maxAcomp = MAX_ACOMPANHANTES;
+  if (conviteId) {
+    convite = await lerConvite(conviteId);
+    if (!convite || convite.desativado_em)
+      return reply(403, { ok: false, error: 'Este convite já não está ativo. Fala com a Aminah ou com o Luís.' });
+    pagina = `/c/${convite.id}`;
+    maxAcomp = convite.lugares - 1;
+    existente = await findRsvpByConvite(convite.id);
+  } else if (edicao) {
+    existente = /^[A-Za-z0-9_-]{16,60}$/.test(edicao) ? await findRsvpByEdicao(await sha256(edicao)) : null;
+    if (!existente) return reply(404, { ok: false, error: 'Este link já não é válido. Envia uma resposta nova.', pagina: '/' });
+    pagina = `/r/${edicao}`;
+    maxAcomp = Math.max(MAX_ACOMPANHANTES, existente.acompanhantes);
+  } else if (!(await temAcesso(cookies))) {
+    return reply(403, { ok: false, semAcesso: true, error: 'Escreve primeiro o código que está no convite.' });
+  }
+
   const nome = clean(form.get('nome'), 120);
   const presenca = clean(form.get('presenca'), 10);
   if (nome.length < 2) return reply(400, { ok: false, error: 'Escreve o teu nome, por favor.', campo: 'nome' });
   if (presenca !== 'sim' && presenca !== 'nao')
     return reply(400, { ok: false, error: 'Diz-nos se contamos contigo.', campo: 'presenca' });
 
+  // Email opcional, só para quem responde com o código (os convites pessoais já são o link de alteração).
+  let email: string | null = null;
+  if (!convite) {
+    const e = limparEmail(form.get('email'));
+    if (e === false) return reply(400, { ok: false, error: 'Esse email não parece certo.', campo: 'email' });
+    email = e;
+  }
+
   const vai = presenca === 'sim';
   const pessoas: Pessoa[] = [];
   if (vai) {
     const n = Number(clean(form.get('acompanhantes'), 2) || '0');
-    if (!Number.isInteger(n) || n < 0 || n > MAX_ACOMPANHANTES)
-      return reply(400, { ok: false, error: 'Escolhe quantos acompanhantes trazes.', campo: 'acompanhantes' });
+    if (!Number.isInteger(n) || n < 0 || n > maxAcomp)
+      return reply(400, {
+        ok: false,
+        error: convite
+          ? `Este convite é para ${convite.lugares} pessoa${convite.lugares > 1 ? 's' : ''}.`
+          : 'Escolhe quantos acompanhantes trazes.',
+        campo: 'acompanhantes',
+      });
 
     for (let i = 0; i <= n; i++) {
       const nomePessoa = i === 0 ? nome : clean(form.get(`acomp_${i}_nome`), 120);
@@ -59,20 +120,37 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       pessoas.push({ ordem: i, nome: nomePessoa, restricao: r.restricao, restricao_qual: r.qual, idade });
     }
   }
-  const rsvp: RsvpInput = { nome, vai, pessoas };
+  const rsvp: RsvpInput = { nome, vai, pessoas, email };
 
   let id: number;
+  let novoToken: string | null = null;
   try {
-    id = await insertRsvp(rsvp);
+    if (existente) {
+      id = existente.id;
+      await updateRsvp(id, rsvp);
+    } else if (convite) {
+      id = await insertRsvp(rsvp, { convite_id: convite.id });
+    } else {
+      novoToken = tokenAleatorio();
+      id = await insertRsvp(rsvp, { edicao_hash: await sha256(novoToken) });
+      pagina = `/r/${novoToken}`;
+    }
   } catch (err) {
     console.error('Erro a gravar RSVP', err);
     return reply(500, { ok: false, error: 'Não foi possível guardar a resposta. Tenta novamente.' });
   }
 
-  // O email segue em segundo plano: a resposta já está guardada, o convidado não espera por ele.
+  // Os emails seguem em segundo plano: a resposta já está guardada, o convidado não espera por eles.
+  const alterada = !!existente;
+  const linkEdicao = novoToken ? `${url.origin}/r/${novoToken}` : edicao ? `${url.origin}/r/${edicao}` : null;
   waitUntil(
-    sendRsvpEmail(rsvp).then((sent) => (sent ? markEmailSent(id) : undefined)).catch((e) => console.error(e)),
+    Promise.all([
+      sendRsvpEmail(rsvp, alterada ? 'alterada' : 'nova', convite?.nome).then((sent) => (sent ? markEmailSent(id) : undefined)),
+      email && linkEdicao
+        ? enviarConfirmacao({ para: email, nome, vai, pessoas: pessoas.length, url: linkEdicao, alterada })
+        : undefined,
+    ]).catch((e) => console.error(e)),
   );
 
-  return reply(200, { ok: true, vai });
+  return reply(200, { ok: true, vai, alterada, editar: linkEdicao ?? undefined, pagina });
 };

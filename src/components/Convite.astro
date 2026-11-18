@@ -1,0 +1,1504 @@
+---
+import Base from '../layouts/Base.astro';
+import { IDADES, MAX_ACOMPANHANTES, RSVP_FECHA_EM } from '../lib/rsvp';
+import type { Rsvp } from '../lib/db';
+
+/**
+ * O convite (design do Canva). O mesmo componente serve:
+ * - `convite`: o convite completo, com o formulário (vazio, ou preenchido para alterar a resposta);
+ * - `portao`: só a capa e o campo para o código impresso no convite;
+ * - `inativo`: só a capa e um aviso (link pessoal desativado ou que não existe).
+ */
+interface Props {
+  modo: 'convite' | 'portao' | 'inativo';
+  /** Link pessoal (/c/<id>): o nome e os lugares do convite. */
+  convite?: { id: string; nome: string; lugares: number } | null;
+  /** Link de alteração (/r/<token>) de quem respondeu com o código. */
+  edicao?: string | null;
+  /** Resposta já dada, para preencher o formulário. */
+  resposta?: Rsvp | null;
+  erroCodigo?: string | null;
+  noindex?: boolean;
+}
+const { modo, convite = null, edicao = null, resposta = null, erroCodigo = null, noindex = false } = Astro.props;
+
+const maxAcomp = convite ? convite.lugares - 1 : Math.max(MAX_ACOMPANHANTES, resposta?.acompanhantes ?? 0);
+const numAcomp = Array.from({ length: maxAcomp + 1 }, (_, i) => i);
+const acomps = numAcomp.slice(1);
+
+// Preenchimento a partir da resposta já dada.
+const vaiInicial = resposta ? (resposta.vai ? 'sim' : 'nao') : null;
+const nAcompInicial = resposta?.vai ? resposta.acompanhantes : 0;
+const pessoa = (i: number) => (resposta?.vai ? resposta.pessoas.find((p) => p.ordem === i) : undefined);
+const restricaoInicial = (i: number) => {
+  const p = pessoa(i);
+  return p?.restricao === 1 ? 'sim' : p?.restricao === 0 ? 'nao' : null;
+};
+const nomeInicial = resposta?.nome ?? (convite && convite.lugares === 1 ? convite.nome : '');
+const aEditar = !!(convite || edicao);
+
+const fotos = Array.from({ length: 12 }, (_, i) => `/img/foto-${String(i + 1).padStart(2, '0')}.webp`);
+
+const programa = [
+  ['15h', 'Chegada dos convidados'],
+  ['16h', 'Cerimónia'],
+  ['16h30', 'Cocktail'],
+  ['18h', 'Jantar'],
+  ['22h', 'Corte do bolo'],
+  ['22h30', 'Festa'],
+];
+
+const mapa = 'https://www.google.com/maps/search/?api=1&query=Quinta+da+Serralheira+Palmela';
+---
+
+<Base
+  title="Aminah & Luís · 5 de setembro de 2027"
+  description="Vamos celebrar o nosso casamento. 5 de setembro de 2027, Quinta da Serralheira, Palmela."
+  noindex={noindex}
+>
+  <!-- ============ CAPA ============ -->
+  <header class="hero">
+    <div class="hero__inner">
+      <div class="hero__nomes">
+        <h1 class="nomes">
+          <span class="nome">Aminah</span>
+          <span class="linha2"><span class="e" aria-label="e">e</span><span class="nome">Luís</span></span>
+        </h1>
+        <p class="convite">Vamos celebrar o nosso casamento</p>
+        <div class="quando">
+          <p><time datetime="2027-09-05">5 Setembro<br />2027</time></p>
+          <span class="divisor" aria-hidden="true"></span>
+          <p>Quinta da<br />Serralheira</p>
+        </div>
+      </div>
+      <div class="hero__arte">
+        <img src="/img/hero-quinta.webp" width="974" height="677" alt="" fetchpriority="high" />
+        <a class="rsvp-link" href={modo === 'portao' ? '#codigo' : '#rsvp'}>RSVP</a>
+      </div>
+    </div>
+  </header>
+
+  {
+    modo !== 'convite' && (
+      <main>
+        <section class="info info--so-cartao" aria-label={modo === 'portao' ? 'Abrir o convite' : 'Convite'}>
+          {modo === 'portao' ? (
+            <div class="cartao-form" id="codigo">
+              <form class="form" method="post" action="/api/codigo">
+                <div class="campo">
+                  <label for="codigo-in">Código do convite</label>
+                  <input
+                    id="codigo-in"
+                    class="codigo-in"
+                    name="codigo"
+                    type="text"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    required
+                    maxlength="40"
+                    aria-describedby="codigo-dica"
+                  />
+                  <p class="dica" id="codigo-dica">
+                    Está no convite que recebeste, junto ao QR code.
+                  </p>
+                </div>
+                {erroCodigo && (
+                  <p class="erro" role="alert">
+                    {erroCodigo}
+                  </p>
+                )}
+                <button type="submit" class="botao">Abrir o convite</button>
+              </form>
+            </div>
+          ) : (
+            <div class="cartao-form" id="rsvp">
+              <div class="obrigado">
+                <p class="obrigado__t">Este convite já não está ativo</p>
+                <p class="obrigado__s">Se achas que é engano, fala com a Aminah ou com o Luís.</p>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
+    )
+  }
+
+  {modo === 'convite' && <main>
+    <!-- ============ A NOSSA HISTÓRIA ============ -->
+    <section class="historia" aria-labelledby="t-historia">
+      <img class="ornamento" src="/img/ornament.webp" width="1127" height="316" alt="" />
+      <h2 id="t-historia" class="titulo">A nossa história</h2>
+      <div class="historia__texto">
+        <p>
+          Tudo começou ainda adolescentes, nasceu de uma amizade que, sem sabermos, viria a transformar-se numa
+          história de amor. Desde os 18 anos, crescemos juntos, partilhámos sonhos, construímos memórias, e
+          aprendemos que o amor é também amizade, é estar presente em todos os momentos.
+        </p>
+        <p>
+          Pelo caminho, construímos uma casa, uma família e recebemos o maior presente das nossas vidas, a nossa
+          Matilde.
+        </p>
+        <p>
+          Hoje já tantos anos depois do começo desta história, continuamos a escolher-nos todos os dias. E é com a
+          mesma alegria, amizade e amor que queremos celebrar este novo capítulo, junto daqueles que fazem parte da
+          nossa história.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ FOTOGRAFIAS ============ -->
+    <section class="fotos" aria-label="Fotografias de Aminah e Luís">
+      <ul class="fotos__grelha">
+        {
+          fotos.map((src, i) => (
+            <li class="reveal" style={`--d:${(i % 4) * 70}ms`}>
+              <img src={src} width="435" height="621" alt={`Aminah e Luís, fotografia ${i + 1}`} loading="lazy" decoding="async" />
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <!-- ============ O CASAMENTO ============ -->
+    <section class="casamento" aria-labelledby="t-casamento">
+      <h2 id="t-casamento" class="titulo">O Casamento</h2>
+      <div class="cartoes">
+        <article class="cartao reveal">
+          <img src="/img/quinta.webp" width="729" height="510" alt="Entrada da Quinta da Serralheira" loading="lazy" />
+          <h3>A Quinta</h3>
+          <p>
+            Quinta da Serralheira<br />
+            <a href={mapa} target="_blank" rel="noopener">Estrada das Serralheiras<br />Palmela</a>
+          </p>
+        </article>
+        <article class="cartao reveal" style="--d:90ms">
+          <img src="/img/alojamento.webp" width="729" height="510" alt="Quarto com cama e dossel branco" loading="lazy" />
+          <h3>Alojamento</h3>
+          <p>
+            (sugestões perto)<br />
+            Pousada Castelo de Palmela<br />
+            Y Palmela - Boutique Apartments<br />
+            Novotel Setúbal
+          </p>
+        </article>
+        <article class="cartao reveal" style="--d:180ms">
+          <img src="/img/dresscode.webp" width="729" height="510" alt="Ilustração de convidados vestidos para um casamento" loading="lazy" />
+          <h3>Dress code</h3>
+          <p>
+            Sintam-se livres para escolher o que quiserem e com o que se sintam melhor. <u
+              >Temos apenas um pedido às nossas convidadas:</u
+            > evitem o verde, uma vez que está reservado para a madrinha e as damas de honor da noiva.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ PROGRAMA ============ -->
+    <section class="programa" aria-labelledby="t-programa">
+      <div class="programa__inner">
+        <div>
+          <h2 id="t-programa" class="titulo">Programa do dia</h2>
+          <ol class="programa__lista">
+            {
+              programa.map(([hora, evento]) => (
+                <li>
+                  <span class="hora">{hora}</span> {evento}
+                </li>
+              ))
+            }
+          </ol>
+          <p class="nota">*Pode sofrer algumas alterações (excluindo o início da cerimónia)</p>
+        </div>
+        <div class="doodles" aria-hidden="true">
+          <img src="/img/doodle-1.webp" width="313" height="266" alt="" loading="lazy" />
+          <img src="/img/doodle-2.webp" width="475" height="321" alt="" loading="lazy" />
+          <img src="/img/doodle-3.webp" width="331" height="268" alt="" loading="lazy" />
+          <img src="/img/doodle-4.webp" width="290" height="370" alt="" loading="lazy" />
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ INFORMAÇÕES + RSVP ============ -->
+    <section class="info" aria-labelledby="t-info">
+      <div class="info__topo">
+        <div>
+          <h2 id="t-info" class="titulo">Informações</h2>
+          <h3 class="contactos-t">Contactos</h3>
+          <p class="contactos">
+            Aminah: <a href="tel:+351917621541">917 621 541</a><br />
+            Luís: <a href="tel:+351911815228">911 815 228</a>
+          </p>
+        </div>
+        <img class="brinde" src="/img/brinde.webp" width="647" height="614" alt="" loading="lazy" />
+      </div>
+
+      <div
+        class="cartao-form"
+        id="rsvp"
+        data-editar={aEditar ? '1' : undefined}
+      >
+        {
+          (convite || resposta) && (
+            <div class="ola">
+              {convite && <p class="ola__t">Olá, {convite.nome}!</p>}
+              {convite && convite.lugares > 1 && (
+                <p class="ola__s">Este convite é para {convite.lugares} pessoas: uma só resposta chega para todos.</p>
+              )}
+              {resposta && (
+                <p class="ola__s ola__ja">Já recebemos a resposta. Podes alterá-la aqui até 15 de julho de 2027.</p>
+              )}
+            </div>
+          )
+        }
+        <form class="form" id="rsvp-form" method="post" action="/api/rsvp" novalidate>
+          <h3 class="sr-only">Confirmar presença</h3>
+          {convite && <input type="hidden" name="convite" value={convite.id} />}
+          {edicao && <input type="hidden" name="edicao" value={edicao} />}
+          <div class="campo">
+            <label for="nome">O teu nome</label>
+            <input
+              id="nome"
+              name="nome"
+              type="text"
+              autocomplete="name"
+              required
+              minlength="2"
+              maxlength="120"
+              value={nomeInicial}
+            />
+          </div>
+
+          <fieldset class="campo">
+            <legend>Contamos contigo?</legend>
+            <label class="opcao">
+              <input type="radio" name="presenca" value="sim" required checked={vaiInicial === 'sim'} />
+              <span>Claro que sim!!!</span>
+            </label>
+            <label class="opcao">
+              <input type="radio" name="presenca" value="nao" checked={vaiInicial === 'nao'} />
+              <span>Infelizmente não vou.</span>
+            </label>
+          </fieldset>
+
+          <div class="so-se-vai revela">
+            <fieldset class="campo" data-restricao="0">
+              <legend>Tens alguma restrição alimentar?</legend>
+              <div class="pilulas">
+                <label class="pilula"
+                  ><input type="radio" name="restricao_0" value="nao" checked={restricaoInicial(0) === 'nao'} /><span
+                    >Não</span
+                  ></label
+                >
+                <label class="pilula"
+                  ><input type="radio" name="restricao_0" value="sim" checked={restricaoInicial(0) === 'sim'} /><span
+                    >Sim</span
+                  ></label
+                >
+              </div>
+              <div class="revela qual-wrap">
+                <input
+                  class="qual"
+                  type="text"
+                  name="restricao_0_qual"
+                  maxlength="300"
+                  placeholder="Se sim, qual? (ex.: vegetariano, sem glúten)"
+                  aria-label="Qual é a tua restrição alimentar?"
+                  value={pessoa(0)?.restricao_qual ?? ''}
+                />
+              </div>
+            </fieldset>
+
+            {
+              maxAcomp === 0 ? (
+                <input type="hidden" name="acompanhantes" value="0" />
+              ) : (
+                <fieldset class="campo">
+                  <legend>Quantos acompanhantes trazes?</legend>
+                  <div class="pilulas">
+                    {numAcomp.map((n) => (
+                      <label class="pilula">
+                        <input type="radio" name="acompanhantes" value={n} checked={n === nAcompInicial} />
+                        <span>{n === 0 ? 'Nenhum' : n}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p class="nota-sem-js">Preenche só os acompanhantes que escolheste acima.</p>
+                </fieldset>
+              )
+            }
+
+            {
+              acomps.map((i) => (
+                <div class="revela" data-acomp={i}>
+                <div class="acomp" role="group" aria-labelledby={`acomp-${i}-t`}>
+                  <p class="acomp__t" id={`acomp-${i}-t`}>
+                    Acompanhante {i}
+                  </p>
+                  <div class="acomp__linha">
+                    <div class="campo">
+                      <label for={`acomp_${i}_nome`}>Nome</label>
+                      <input
+                        id={`acomp_${i}_nome`}
+                        name={`acomp_${i}_nome`}
+                        type="text"
+                        autocomplete="off"
+                        maxlength="120"
+                        value={pessoa(i)?.nome ?? ''}
+                      />
+                    </div>
+                    <div class="campo">
+                      <label for={`acomp_${i}_idade`}>Idade</label>
+                      <select id={`acomp_${i}_idade`} name={`acomp_${i}_idade`}>
+                        <option value="" selected={!pessoa(i)?.idade} disabled>
+                          Escolhe…
+                        </option>
+                        {IDADES.map((idade) => (
+                          <option value={idade.id} selected={pessoa(i)?.idade === idade.id}>
+                            {idade.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <fieldset class="campo" data-restricao={i}>
+                    <legend>Tem alguma restrição alimentar?</legend>
+                    <div class="pilulas">
+                      <label class="pilula">
+                        <input type="radio" name={`restricao_${i}`} value="nao" checked={restricaoInicial(i) === 'nao'} />
+                        <span>Não</span>
+                      </label>
+                      <label class="pilula">
+                        <input type="radio" name={`restricao_${i}`} value="sim" checked={restricaoInicial(i) === 'sim'} />
+                        <span>Sim</span>
+                      </label>
+                    </div>
+                    <div class="revela qual-wrap">
+                      <input
+                        class="qual"
+                        type="text"
+                        name={`restricao_${i}_qual`}
+                        maxlength="300"
+                        placeholder="Se sim, qual?"
+                        aria-label={`Qual é a restrição alimentar do acompanhante ${i}?`}
+                        value={pessoa(i)?.restricao_qual ?? ''}
+                      />
+                    </div>
+                  </fieldset>
+                </div>
+                </div>
+              ))
+            }
+          </div>
+
+          {
+            !convite && (
+              <div class="campo">
+                <label for="email">O teu email <span class="opcional">(opcional)</span></label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autocomplete="email"
+                  maxlength="200"
+                  value={resposta?.email ?? ''}
+                  aria-describedby="email-dica"
+                />
+                <p class="dica" id="email-dica">Enviamos-te uma cópia da resposta e o link para a alterares.</p>
+              </div>
+            )
+          }
+
+          <div class="armadilha" aria-hidden="true">
+            <label>Website <input name="website" type="text" tabindex="-1" autocomplete="off" /></label>
+          </div>
+
+          <p class="erro" role="alert" hidden></p>
+          <button type="submit" class="botao">{resposta ? 'Guardar alterações' : 'Confirmar'}</button>
+        </form>
+
+        {
+          resposta && (
+            <form class="apagar-resp" method="post" action="/api/apagar-resposta">
+              {convite && <input type="hidden" name="convite" value={convite.id} />}
+              {edicao && <input type="hidden" name="edicao" value={edicao} />}
+              <button type="submit" class="link-btn">
+                Apagar a minha resposta
+              </button>
+            </form>
+          )
+        }
+
+        <div class="obrigado" role="status" tabindex="-1" hidden>
+          <p class="obrigado__t"></p>
+          <p class="obrigado__s"></p>
+          <div class="guardar-link" hidden>
+            <p>Guarda este link para veres ou alterares a resposta mais tarde:</p>
+            <p class="guardar-link__linha">
+              <a class="guardar-link__url" href="#"></a>
+              <button type="button" class="link-btn copiar">Copiar</button>
+            </p>
+          </div>
+          <button type="button" class="link-btn outra">{aEditar ? 'Alterar a resposta' : 'Enviar outra resposta'}</button>
+        </div>
+
+        <div class="fechado">
+          <p class="obrigado__t">As confirmações estão encerradas</p>
+          <p class="obrigado__s">
+            O prazo para confirmar presença terminou a 15 de julho de 2027.
+            Se precisares de falar connosco, liga à <a href="tel:+351917621541">Aminah</a> ou ao <a href="tel:+351911815228">Luís</a>.
+          </p>
+        </div>
+
+        <p class="prazo">
+          Confirmem, por favor, a <u>vossa presença até ao dia 15 de Julho de 2027</u>
+        </p>
+      </div>
+      <!-- Corre logo (antes de a página aparecer) para não mostrar o formulário por um instante depois do prazo. -->
+      <script is:inline define:vars={{ fechaEm: RSVP_FECHA_EM }}>
+        if (Date.now() >= Date.parse(fechaEm)) document.getElementById('rsvp').classList.add('rsvp-fechado');
+      </script>
+    </section>
+  </main>}
+
+  <footer class="rodape">
+    <p>Aminah <span class="e">e</span> Luís · 05.09.2027</p>
+  </footer>
+</Base>
+
+<script>
+  // Envio do RSVP sem sair da página (o formulário também funciona sem JavaScript).
+  // Na página do código (portão) não há formulário de resposta: só corre a animação do fim.
+  const formRsvp = document.querySelector<HTMLFormElement>('#rsvp-form');
+  if (formRsvp) iniciarRsvp(formRsvp);
+
+  function iniciarRsvp(form: HTMLFormElement) {
+  const cartao = document.getElementById('rsvp')!;
+  const erro = form.querySelector<HTMLParagraphElement>('.erro')!;
+  const botao = form.querySelector<HTMLButtonElement>('.botao')!;
+  const textoBotao = botao.textContent!;
+  const soSeVai = form.querySelector<HTMLDivElement>('.so-se-vai')!;
+  const obrigado = cartao.querySelector<HTMLDivElement>('.obrigado')!;
+  const guardarLink = obrigado.querySelector<HTMLDivElement>('.guardar-link')!;
+  const apagarForm = cartao.querySelector<HTMLFormElement>('.apagar-resp');
+  const ola = cartao.querySelector<HTMLDivElement>('.ola');
+
+  const msgs = {
+    sim: ['Obrigado, {nome}!', 'Mal podemos esperar por celebrar contigo.'],
+    grupo: ['Obrigado, {nome}!', 'Contamos convosco: {n} pessoas. Mal podemos esperar por celebrar juntos.'],
+    nao: ['Obrigado por nos avisares, {nome}.', 'Vamos sentir a tua falta!'],
+  };
+
+  function mostrarObrigado(vai: boolean, nome: string, pessoas = 1, alterada = false) {
+    const [t, s] = msgs[!vai ? 'nao' : pessoas > 1 ? 'grupo' : 'sim'];
+    const titulo = alterada ? 'Resposta atualizada, {nome}!' : t;
+    obrigado.querySelector('.obrigado__t')!.textContent = titulo.replace('{nome}', nome.split(' ')[0] || '');
+    obrigado.querySelector('.obrigado__s')!.textContent = s.replace('{n}', String(pessoas));
+    form.hidden = true;
+    if (apagarForm) apagarForm.hidden = true;
+    if (ola) ola.hidden = true;
+    obrigado.hidden = false;
+    obrigado.focus?.();
+  }
+
+  /** Quem respondeu com o código recebe um link para alterar: mostra-o e passa a página para modo "alterar". */
+  function mostrarLink(url: string) {
+    const a = guardarLink.querySelector<HTMLAnchorElement>('.guardar-link__url')!;
+    a.href = url;
+    a.textContent = url;
+    guardarLink.hidden = false;
+    const token = new URL(url).pathname.split('/').pop()!;
+    let campo = form.querySelector<HTMLInputElement>('input[name=edicao]');
+    if (!campo) {
+      campo = Object.assign(document.createElement('input'), { type: 'hidden', name: 'edicao' });
+      form.insertBefore(campo, form.firstChild);
+    }
+    campo.value = token;
+    cartao.dataset.editar = '1';
+    obrigado.querySelector('.outra')!.textContent = 'Alterar a resposta';
+    history.replaceState(null, '', new URL(url).pathname + '#rsvp');
+  }
+
+  guardarLink.querySelector('.copiar')!.addEventListener('click', async (e) => {
+    const b = e.currentTarget as HTMLButtonElement;
+    try {
+      await navigator.clipboard.writeText(guardarLink.querySelector('a')!.href);
+      b.textContent = 'Copiado!';
+    } catch {
+      b.textContent = 'Copia o link acima';
+    }
+    setTimeout(() => (b.textContent = 'Copiar'), 2500);
+  });
+
+  apagarForm?.addEventListener('submit', (e) => {
+    if (!confirm('Apagar a tua resposta? A Aminah e o Luís deixam de contar com ela.')) e.preventDefault();
+  });
+
+  const acompBlocos = [...form.querySelectorAll<HTMLDivElement>('[data-acomp]')];
+  document.documentElement.classList.add('js');
+
+  const semAnimacao = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /**
+   * Mostra ou esconde um bloco a deslizar (altura + opacidade), em vez de aparecer de repente.
+   * Também anima o espaço (gap) da grelha onde está, para o resto do formulário não saltar.
+   */
+  function revelar(el: HTMLElement, mostrar: boolean, animar: boolean, atraso = 0) {
+    const aSair = el.dataset.saindo === '1';
+    if (mostrar === (!el.hidden && !aSair)) return;
+    el.getAnimations().forEach((a) => a.cancel());
+    el.style.overflow = '';
+    delete el.dataset.saindo;
+    if (!animar || semAnimacao) {
+      el.hidden = !mostrar;
+      return;
+    }
+    el.hidden = false;
+    if (!mostrar) el.dataset.saindo = '1';
+    const gap = parseFloat(getComputedStyle(el.parentElement!).rowGap) || 0;
+    const fechado = { height: '0px', opacity: 0, marginTop: `${-gap}px`, transform: 'translateY(-6px)' };
+    const aberto = { height: `${el.scrollHeight}px`, opacity: 1, marginTop: '0px', transform: 'none' };
+    // Só corta o conteúdo durante a animação (para não cortar contornos de foco depois).
+    el.style.overflow = 'hidden';
+    const anim = el.animate(mostrar ? [fechado, aberto] : [aberto, fechado], {
+      duration: mostrar ? 420 : 300,
+      delay: atraso,
+      easing: mostrar ? 'cubic-bezier(.2,.75,.25,1)' : 'cubic-bezier(.4,0,.6,1)',
+      fill: 'both',
+    });
+    anim.onfinish = () => {
+      if (!mostrar) {
+        el.hidden = true;
+        delete el.dataset.saindo;
+      }
+      el.style.overflow = '';
+      anim.cancel();
+    };
+  }
+
+  /** Mostra só o que interessa: acompanhantes escolhidos e o campo "qual?" quando não disse "Não". */
+  function atualizar(animar = true) {
+    const vai = form.querySelector<HTMLInputElement>('input[name=presenca]:checked')?.value !== 'nao';
+    revelar(soSeVai, vai, animar);
+    const n = Number(form.querySelector<HTMLInputElement>('input[name=acompanhantes]:checked')?.value ?? 0);
+    // Vários de uma vez entram um a seguir ao outro (e saem do último para o primeiro).
+    let entra = 0;
+    acompBlocos.forEach((bloco) => {
+      const ativo = Number(bloco.dataset.acomp) <= n;
+      if (ativo && (bloco.hidden || bloco.dataset.saindo)) revelar(bloco, true, animar, 70 * entra++);
+      bloco.querySelectorAll('input, select').forEach((el) => ((el as HTMLInputElement).disabled = !ativo));
+    });
+    const saem = acompBlocos.filter((b) => Number(b.dataset.acomp) > n && !b.hidden && !b.dataset.saindo).reverse();
+    saem.forEach((bloco, k) => revelar(bloco, false, animar, 50 * k));
+    form.querySelectorAll<HTMLFieldSetElement>('[data-restricao]').forEach((fs) => {
+      const nao = fs.querySelector<HTMLInputElement>('input[value=nao]')!.checked;
+      revelar(fs.querySelector<HTMLDivElement>('.qual-wrap')!, !nao, animar);
+    });
+  }
+  atualizar(false);
+
+  form.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    // Escolher "Não" limpa o "qual?" para não ficar texto esquecido.
+    if (t.type === 'radio' && t.value === 'nao' && t.name.startsWith('restricao_')) {
+      form.querySelector<HTMLInputElement>(`[name=${t.name}_qual]`)!.value = '';
+    }
+    atualizar();
+  });
+
+  // Escrever a restrição já conta como "Sim".
+  form.addEventListener('input', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (!t.classList.contains('qual') || !t.value.trim()) return;
+    const sim = form.querySelector<HTMLInputElement>(`[name=${t.name.replace('_qual', '')}][value=sim]`);
+    if (sim && !sim.checked) sim.checked = true;
+  });
+
+  /** Validação no browser, com as mesmas regras do servidor. */
+  function validar(data: FormData): [string, string] | null {
+    const nome = String(data.get('nome') ?? '').trim();
+    if (nome.length < 2) return ['Escreve o teu nome, por favor.', '#nome'];
+    if (!data.get('presenca')) return ['Diz-nos se contamos contigo.', 'input[name=presenca]'];
+    if (data.get('presenca') !== 'sim') return null;
+    const n = Number(data.get('acompanhantes') ?? 0);
+    for (let i = 0; i <= n; i++) {
+      const nomeI = i === 0 ? nome : String(data.get(`acomp_${i}_nome`) ?? '').trim();
+      if (nomeI.length < 2) return [`Escreve o nome do acompanhante ${i}, por favor.`, `#acomp_${i}_nome`];
+      if (i > 0 && !data.get(`acomp_${i}_idade`)) return [`Diz-nos a idade de ${nomeI}, por favor.`, `#acomp_${i}_idade`];
+      const respondeu = data.get(`restricao_${i}`) || String(data.get(`restricao_${i}_qual`) ?? '').trim();
+      if (!respondeu)
+        return [
+          i === 0 ? 'Diz-nos se tens alguma restrição alimentar.' : `Diz-nos se ${nomeI} tem alguma restrição alimentar.`,
+          `input[name=restricao_${i}]`,
+        ];
+    }
+    return null;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    erro.hidden = true;
+    const data = new FormData(form);
+    const problema = validar(data);
+    if (problema) return mostrarErro(...problema);
+    const nome = String(data.get('nome')).trim();
+    const pessoas = data.get('presenca') === 'sim' ? 1 + Number(data.get('acompanhantes') ?? 0) : 0;
+
+    botao.disabled = true;
+    botao.textContent = 'A enviar…';
+    try {
+      const res = await fetch(form.action, { method: 'POST', body: data, headers: { Accept: 'application/json' } });
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        campo?: string;
+        fechado?: boolean;
+        semAcesso?: boolean;
+        alterada?: boolean;
+        editar?: string;
+      };
+      if (body.fechado) return fecharRsvp();
+      if (body.semAcesso) return location.assign('/#codigo');
+      if (!res.ok || !body.ok) {
+        const foco = body.campo
+          ? /^(nome|acomp_)/.test(body.campo)
+            ? `#${body.campo}`
+            : `input[name=${body.campo}]`
+          : undefined;
+        return mostrarErro(body.error || 'Algo correu mal. Tenta novamente.', foco);
+      }
+      mostrarObrigado(pessoas > 0, nome, pessoas, !!body.alterada);
+      // Nova resposta pelo código: passa a haver um link para a alterar.
+      if (body.editar && !cartao.dataset.editar) mostrarLink(body.editar);
+      if (body.editar && body.alterada) {
+        // Mostra outra vez o link a quem está a alterar pelo link (/r/...), para o terem à mão.
+        const a = guardarLink.querySelector<HTMLAnchorElement>('.guardar-link__url')!;
+        a.href = a.textContent = body.editar;
+        guardarLink.hidden = false;
+      }
+    } catch {
+      mostrarErro('Não foi possível enviar. Verifica a ligação e tenta novamente.');
+    } finally {
+      botao.disabled = false;
+      botao.textContent = cartao.dataset.editar ? 'Guardar alterações' : textoBotao;
+    }
+  });
+
+  /** O servidor diz que o prazo passou (ex.: relógio do telemóvel atrasado): mostra a mensagem de fecho. */
+  function fecharRsvp() {
+    document.getElementById('rsvp')!.classList.add('rsvp-fechado');
+  }
+
+  function mostrarErro(msg: string, foco?: string) {
+    erro.textContent = msg;
+    erro.hidden = false;
+    if (foco) form.querySelector<HTMLElement>(foco)?.focus();
+  }
+
+  obrigado.querySelector('.outra')!.addEventListener('click', () => {
+    obrigado.hidden = true;
+    guardarLink.hidden = true;
+    form.hidden = false;
+    if (ola) ola.hidden = false;
+    // Numa resposta nova pelo código (sem link de alteração), "Enviar outra resposta" começa do zero.
+    if (!cartao.dataset.editar) {
+      form.reset();
+      atualizar(false);
+    }
+    form.querySelector<HTMLInputElement>('#nome')!.focus();
+  });
+
+  // Sem JavaScript, o servidor redireciona para ...?rsvp=ok|erro|apagada|fechado
+  const estado = new URLSearchParams(location.search).get('rsvp');
+  if (estado === 'ok') {
+    obrigado.querySelector('.obrigado__t')!.textContent = 'Obrigado pela resposta!';
+    if (location.pathname.startsWith('/r/')) mostrarLink(location.origin + location.pathname);
+    form.hidden = true;
+    if (ola) ola.hidden = true;
+    if (apagarForm) apagarForm.hidden = true;
+    obrigado.hidden = false;
+  } else if (estado === 'apagada') {
+    obrigado.querySelector('.obrigado__t')!.textContent = 'Resposta apagada';
+    obrigado.querySelector('.obrigado__s')!.textContent = 'Se mudares de ideias, podes responder outra vez.';
+    obrigado.querySelector('.outra')!.textContent = 'Responder outra vez';
+    form.hidden = true;
+    obrigado.hidden = false;
+  } else if (estado === 'fechado') {
+    fecharRsvp();
+  } else if (estado === 'erro') {
+    mostrarErro('Não foi possível enviar. Confirma se preencheste tudo e tenta novamente.');
+  }
+  if (estado) history.replaceState(null, '', location.pathname + '#rsvp');
+  }
+
+  // Aparecer suave ao fazer scroll
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window) {
+    document.documentElement.classList.add('anim');
+    const io = new IntersectionObserver(
+      (entries) =>
+        entries.forEach((en) => {
+          if (en.isIntersecting) {
+            en.target.classList.add('visivel');
+            io.unobserve(en.target);
+          }
+        }),
+      { rootMargin: '0px 0px -8% 0px' },
+    );
+    document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+  }
+</script>
+
+<style>
+  /* ---------- comuns ---------- */
+  section {
+    padding: clamp(56px, 8vw, 96px) var(--gutter);
+  }
+  .titulo {
+    font-family: var(--f-titulo);
+    font-weight: 400;
+    font-variation-settings: 'opsz' 100;
+    text-transform: uppercase;
+    font-size: clamp(2.8rem, 8.4vw, 7.2rem);
+    line-height: 1.05;
+    letter-spacing: 0.035em;
+    margin: 0;
+    text-align: center;
+  }
+  .e {
+    font-family: var(--f-script);
+    text-transform: none;
+    color: var(--salva);
+  }
+  :global(html.anim) .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 0.7s ease var(--d, 0ms),
+      transform 0.7s ease var(--d, 0ms);
+  }
+  :global(html.anim) .reveal.visivel {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* ---------- capa ---------- */
+  .hero {
+    background: var(--verde);
+    color: var(--bege);
+    padding: clamp(48px, 7.5vw, 105px) var(--gutter) clamp(48px, 4vw, 60px);
+  }
+  .hero__inner {
+    max-width: var(--max);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4vw;
+    align-items: center;
+  }
+  .hero__nomes {
+    text-align: center;
+    max-width: 580px;
+    padding-left: clamp(0px, 2.5vw, 34px);
+  }
+  .nomes {
+    margin: 0;
+    font-family: var(--f-titulo);
+    font-weight: 400;
+    font-variation-settings: 'opsz' 100;
+    text-transform: uppercase;
+    font-size: clamp(4.6rem, 12.2vw, 10.4rem);
+    line-height: 1;
+    letter-spacing: 0.045em;
+  }
+  .nome {
+    display: block;
+  }
+  .linha2 {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.12em;
+    margin-left: -0.9em;
+  }
+  .nomes .e {
+    font-size: 0.55em;
+    line-height: 1;
+    margin-top: 0.25em;
+  }
+  .convite {
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    letter-spacing: 0.128em;
+    color: var(--branco);
+    font-size: clamp(0.95rem, 1.56vw, 1.33rem);
+    margin: clamp(16px, 2vw, 28px) 0 clamp(24px, 3vw, 40px);
+  }
+  .quando {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: clamp(16px, 3vw, 40px);
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    letter-spacing: 0.128em;
+    font-size: clamp(1rem, 1.66vw, 1.42rem);
+    line-height: 1.9;
+  }
+  .quando p {
+    margin: 0;
+  }
+  .divisor {
+    width: 1px;
+    height: 58px;
+    background: var(--bege);
+  }
+  .hero__arte {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(24px, 4vw, 52px);
+  }
+  .hero__arte img {
+    width: min(100%, 487px);
+  }
+  .rsvp-link {
+    font-family: var(--f-titulo);
+    font-variation-settings: 'opsz' 100;
+    color: var(--salva);
+    font-size: clamp(2.4rem, 3.9vw, 3.33rem);
+    line-height: 1;
+    text-decoration: none;
+    border-bottom: 2px solid currentColor;
+    padding: 0 2px 2px;
+    transition:
+      color 0.2s,
+      letter-spacing 0.3s;
+  }
+  .rsvp-link:hover {
+    color: var(--bege);
+    letter-spacing: 0.04em;
+  }
+
+  /* ---------- história ---------- */
+  .historia {
+    background: var(--verde);
+    color: var(--bege);
+    padding-top: 0;
+    text-align: center;
+  }
+  .ornamento {
+    width: min(564px, 80%);
+    margin: 0 auto clamp(32px, 4vw, 48px);
+  }
+  .historia__texto {
+    max-width: 1212px;
+    margin: clamp(28px, 3vw, 42px) auto 0;
+    color: #fff;
+    font-size: clamp(1.05rem, 1.85vw, 1.58rem);
+    line-height: 1.53;
+  }
+  .historia__texto p {
+    margin: 0;
+  }
+
+  /* ---------- fotos ---------- */
+  .fotos {
+    background: var(--bege);
+  }
+  .fotos__grelha {
+    list-style: none;
+    margin: 0 auto;
+    padding: 0;
+    max-width: 1092px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(14px, 2.4vw, 33px) clamp(14px, 5.4vw, 69px);
+  }
+  .fotos__grelha img {
+    width: 100%;
+    aspect-ratio: 350 / 500;
+    object-fit: cover;
+    border-radius: 999px;
+    border: 2px solid var(--branco);
+    background: #e9cfa8;
+  }
+
+  /* ---------- o casamento ---------- */
+  .casamento {
+    background: var(--oliva);
+    color: var(--verde);
+  }
+  .cartoes {
+    max-width: 1212px;
+    margin: clamp(32px, 5vw, 46px) auto 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(20px, 4.3vw, 58px);
+    text-align: center;
+  }
+  .cartao img {
+    width: 100%;
+    aspect-ratio: 500 / 350;
+    object-fit: cover;
+    border-radius: 16% / 22.86%;
+  }
+  .cartao h3 {
+    font-family: var(--f-caps);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.128em;
+    font-size: clamp(1.3rem, 1.95vw, 1.67rem);
+    margin: 22px 0 6px;
+  }
+  .cartao p {
+    margin: 0;
+    font-size: clamp(1.05rem, 1.85vw, 1.58rem);
+    line-height: 1.4;
+  }
+  .cartao a {
+    text-underline-offset: 3px;
+  }
+
+  /* ---------- programa ---------- */
+  .programa {
+    background: var(--verde);
+    color: var(--bege);
+  }
+  .programa__inner {
+    max-width: var(--max);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 730px) 1fr;
+    gap: 4vw;
+  }
+  .programa .titulo {
+    font-size: clamp(2.8rem, 8vw, 6.8rem);
+  }
+  .programa__lista {
+    list-style: none;
+    padding: 0;
+    margin: clamp(32px, 4vw, 52px) 0 0;
+    text-align: center;
+    font-family: var(--f-titulo);
+    font-variation-settings: 'opsz' 100;
+    text-transform: uppercase;
+    letter-spacing: 0.128em;
+    font-size: clamp(1.5rem, 3vw, 2.6rem);
+    line-height: 2.35;
+  }
+  .nota {
+    color: var(--branco);
+    font-size: clamp(0.85rem, 1.36vw, 1.16rem);
+    margin: clamp(32px, 5vw, 70px) 0 0;
+  }
+  .doodles {
+    position: relative;
+    min-height: 100%;
+  }
+  .doodles img {
+    position: absolute;
+  }
+  .doodles img:nth-child(1) {
+    width: 156px;
+    right: 8%;
+    top: -40px;
+  }
+  .doodles img:nth-child(2) {
+    width: 238px;
+    right: 22%;
+    top: 150px;
+  }
+  .doodles img:nth-child(3) {
+    width: 166px;
+    right: 42%;
+    top: 368px;
+  }
+  .doodles img:nth-child(4) {
+    width: 145px;
+    left: 0;
+    top: 502px;
+  }
+
+  /* ---------- informações + RSVP ---------- */
+  .info {
+    background: var(--azul);
+    color: var(--verde);
+  }
+  .info__topo {
+    max-width: 1212px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+  }
+  .info .titulo {
+    text-align: left;
+  }
+  .contactos-t {
+    font-family: var(--f-caps);
+    font-weight: 400;
+    text-transform: uppercase;
+    font-size: clamp(1.7rem, 3.07vw, 2.62rem);
+    margin: 4px 0 0;
+    line-height: 1.4;
+  }
+  .contactos {
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    font-size: clamp(1.3rem, 2.3vw, 1.96rem);
+    line-height: 1.4;
+    margin: 0;
+  }
+  .contactos a {
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .contactos a:hover {
+    text-decoration: underline;
+  }
+  .brinde {
+    width: clamp(140px, 24vw, 323px);
+    margin-right: clamp(0px, 2vw, 34px);
+  }
+
+  .cartao-form {
+    max-width: 1180px;
+    margin: clamp(32px, 4vw, 52px) auto 0;
+    background: #fff;
+    border-radius: 8px;
+    padding: clamp(20px, 3vw, 32px) clamp(16px, 2.4vw, 32px) 14px;
+    scroll-margin-top: 24px;
+  }
+  .form {
+    display: grid;
+    gap: clamp(26px, 3vw, 38px);
+  }
+  .campo {
+    display: grid;
+    gap: 14px;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+  }
+  .campo > label,
+  .campo legend {
+    font-family: var(--f-caps);
+    font-size: clamp(1.1rem, 1.9vw, 1.45rem);
+    color: var(--verde);
+    padding: 0;
+  }
+  .campo legend {
+    margin-bottom: 14px;
+  }
+  input[type='text'],
+  input[type='email'],
+  select {
+    font: inherit;
+    font-size: 1.1rem;
+    width: 100%;
+    padding: 0.8em 0.9em;
+    min-height: 56px;
+    border: 1px solid #8a8a8a;
+    border-radius: 6px;
+    background: #fff;
+    color: #222;
+  }
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.6em;
+    cursor: pointer;
+    background: #fff
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%233e513c' stroke-width='2'/%3E%3C/svg%3E")
+      no-repeat right 1em center;
+  }
+  select:invalid,
+  select:has(option[value='']:checked) {
+    color: #767676;
+  }
+  input[type='text']:focus,
+  input[type='email']:focus,
+  select:focus {
+    outline: 2px solid var(--verde);
+    outline-offset: 0;
+    border-color: var(--verde);
+  }
+  .opcao {
+    position: relative;
+    display: block;
+    cursor: pointer;
+  }
+  .opcao + .opcao {
+    margin-top: 12px;
+  }
+  .opcao input {
+    position: absolute;
+    opacity: 0;
+    inset: 0;
+    cursor: pointer;
+  }
+  .opcao span {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: clamp(72px, 9.7vw, 132px);
+    padding: 0 18px;
+    border-radius: 8px;
+    background: #e1e1e1;
+    font-size: clamp(1.1rem, 1.9vw, 1.6rem);
+    color: #111;
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .opcao span::before {
+    content: '';
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid #777;
+    background: #fff;
+    transition: all 0.2s;
+  }
+  .opcao:hover span {
+    background: #d6d6d6;
+  }
+  .opcao input:checked + span {
+    background: var(--verde);
+    color: var(--bege);
+  }
+  .opcao input:checked + span::before {
+    border-color: var(--bege);
+    box-shadow: inset 0 0 0 4px var(--verde);
+    background: var(--bege);
+  }
+  .opcao input:focus-visible + span {
+    outline: 2px solid var(--verde);
+    outline-offset: 3px;
+  }
+  .so-se-vai {
+    display: grid;
+    gap: clamp(26px, 3vw, 38px);
+  }
+  .revela {
+    min-width: 0;
+  }
+
+  .pilulas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .pilula {
+    position: relative;
+    cursor: pointer;
+  }
+  .pilula input {
+    position: absolute;
+    opacity: 0;
+    inset: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+  .pilula span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 64px;
+    min-height: 52px;
+    padding: 0 22px;
+    border-radius: 999px;
+    background: #e1e1e1;
+    font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+    color: #111;
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .pilula:hover span {
+    background: #d6d6d6;
+  }
+  .pilula input:checked + span {
+    background: var(--verde);
+    color: var(--bege);
+  }
+  .pilula input:focus-visible + span {
+    outline: 2px solid var(--verde);
+    outline-offset: 3px;
+  }
+  .acomp {
+    display: grid;
+    gap: clamp(20px, 2.4vw, 28px);
+    padding: clamp(18px, 2.4vw, 26px);
+    border-radius: 8px;
+    background: #f4f1ea;
+    border-left: 4px solid var(--salva);
+  }
+  .acomp__linha {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
+    gap: clamp(14px, 2vw, 20px);
+    align-items: end;
+  }
+  @media (max-width: 560px) {
+    .acomp__linha {
+      grid-template-columns: 1fr;
+    }
+  }
+  .acomp__t {
+    margin: 0;
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: clamp(1rem, 1.5vw, 1.15rem);
+    color: var(--oliva);
+  }
+  .acomp .campo > label,
+  .acomp .campo legend {
+    font-size: clamp(1rem, 1.6vw, 1.2rem);
+  }
+  .nota-sem-js {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--oliva);
+  }
+  :global(.js) .nota-sem-js {
+    display: none;
+  }
+  .armadilha {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .erro {
+    margin: 0;
+    color: #a3261b;
+    font-weight: 600;
+  }
+  .botao {
+    font-family: var(--f-caps);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: clamp(1.2rem, 2.2vw, 1.9rem);
+    color: #000;
+    background: var(--azul);
+    border: 0;
+    border-radius: 999px;
+    min-height: 72px;
+    cursor: pointer;
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .botao:hover {
+    background: var(--verde);
+    color: var(--bege);
+  }
+  .botao:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+  .obrigado {
+    text-align: center;
+    padding: clamp(32px, 5vw, 64px) 8px;
+  }
+  .obrigado__t {
+    font-family: var(--f-titulo);
+    font-variation-settings: 'opsz' 100;
+    text-transform: uppercase;
+    font-size: clamp(2rem, 4.5vw, 3.6rem);
+    line-height: 1.1;
+    margin: 0 0 10px;
+  }
+  .obrigado__s {
+    font-size: clamp(1.05rem, 1.85vw, 1.4rem);
+    margin: 0 0 20px;
+  }
+  .link-btn {
+    font: inherit;
+    background: none;
+    border: 0;
+    color: var(--verde);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .fechado {
+    display: none;
+    text-align: center;
+    padding: clamp(32px, 5vw, 64px) 8px clamp(20px, 3vw, 36px);
+  }
+  .rsvp-fechado .fechado {
+    display: block;
+  }
+  .rsvp-fechado .form,
+  .rsvp-fechado .obrigado,
+  .rsvp-fechado .prazo {
+    display: none !important;
+  }
+  .prazo {
+    text-align: center;
+    margin: 12px 0 0;
+    font-size: clamp(0.95rem, 1.76vw, 1.5rem);
+    letter-spacing: 0.02em;
+  }
+
+  /* ---------- convites pessoais, código e alterações ---------- */
+  .info--so-cartao .cartao-form {
+    max-width: 640px;
+    margin-top: 0;
+    padding-bottom: clamp(20px, 3vw, 32px);
+  }
+  .codigo-in {
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    text-align: center;
+    font-family: var(--f-caps);
+    font-size: 1.4rem !important;
+  }
+  .dica {
+    margin: -4px 0 0;
+    font-size: 0.95rem;
+    color: var(--oliva);
+  }
+  .opcional {
+    color: var(--oliva);
+    font-size: 0.85em;
+  }
+  .ola {
+    text-align: center;
+    margin: 0 0 clamp(26px, 3vw, 38px);
+  }
+  .ola__t {
+    font-family: var(--f-titulo);
+    font-variation-settings: 'opsz' 100;
+    text-transform: uppercase;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    line-height: 1.1;
+    margin: 0 0 8px;
+  }
+  .ola__s {
+    margin: 0;
+    font-size: clamp(1.02rem, 1.7vw, 1.3rem);
+  }
+  .ola__ja {
+    margin-top: 10px;
+    display: inline-block;
+    background: #f4f1ea;
+    border-left: 4px solid var(--salva);
+    border-radius: 8px;
+    padding: 10px 16px;
+  }
+  .apagar-resp {
+    text-align: center;
+    margin: 18px 0 0;
+  }
+  .apagar-resp .link-btn {
+    color: #a3261b;
+    font-size: 0.95rem;
+  }
+  .guardar-link {
+    margin: 0 auto 22px;
+    max-width: 640px;
+    background: #f4f1ea;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .guardar-link p {
+    margin: 0;
+  }
+  .guardar-link__linha {
+    margin-top: 6px !important;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 14px;
+  }
+  .guardar-link__url {
+    word-break: break-all;
+    font-weight: 600;
+  }
+
+  .rodape {
+    background: var(--verde);
+    color: var(--salva);
+    text-align: center;
+    padding: 28px var(--gutter);
+    font-family: var(--f-caps);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .rodape p {
+    margin: 0;
+  }
+  .rodape .e {
+    font-size: 1.4em;
+  }
+
+  /* ---------- responsivo ---------- */
+  @media (max-width: 900px) {
+    .hero__inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+    .hero__nomes {
+      margin: 0 auto;
+      padding-left: 0;
+    }
+    .fotos__grelha {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .cartoes {
+      grid-template-columns: 1fr;
+      max-width: 480px;
+      gap: 48px;
+    }
+    .programa__inner {
+      grid-template-columns: 1fr;
+    }
+    .doodles {
+      order: -1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6vw;
+      min-height: 0;
+      margin-bottom: 8px;
+    }
+    .doodles img {
+      position: static;
+      width: auto !important;
+      height: clamp(52px, 13vw, 96px);
+    }
+  }
+  @media (max-width: 560px) {
+    .fotos__grelha {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px 18px;
+    }
+    .quando {
+      gap: 14px;
+      letter-spacing: 0.08em;
+    }
+    .divisor {
+      height: 48px;
+    }
+    .info__topo {
+      flex-direction: column-reverse;
+      align-items: center;
+      text-align: center;
+    }
+    .info .titulo {
+      text-align: center;
+    }
+    .brinde {
+      width: 150px;
+      margin: 0;
+    }
+  }
+</style>

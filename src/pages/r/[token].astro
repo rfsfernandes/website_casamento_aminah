@@ -1,0 +1,19 @@
+---
+import Convite from '../../components/Convite.astro';
+import { findRsvpByEdicao } from '../../lib/db';
+import { sha256 } from '../../lib/seguranca';
+
+// Link de alteração de quem respondeu com o código: mostra o convite com a resposta preenchida.
+export const prerender = false;
+
+const token = Astro.params.token ?? '';
+const resposta = /^[A-Za-z0-9_-]{16,60}$/.test(token) ? await findRsvpByEdicao(await sha256(token)) : null;
+
+// Resposta apagada ou link errado: volta ao convite (que pede o código, se for preciso).
+if (!resposta) return Astro.redirect('/', 303);
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+Astro.response.headers.set('Referrer-Policy', 'same-origin');
+---
+
+<Convite modo="convite" edicao={token} resposta={resposta} noindex />

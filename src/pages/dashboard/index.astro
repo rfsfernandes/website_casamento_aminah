@@ -39,7 +39,8 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
         <h1>Respostas ao RSVP</h1>
       </div>
       <div class="acoes">
-        <a class="btn" href="/dashboard/respostas.csv">Exportar CSV</a>
+        <a class="btn" href="/dashboard/convidados">Convidados</a>
+        <a class="btn btn--linha" href="/dashboard/respostas.csv">Exportar CSV</a>
         <form method="post" action="/dashboard/logout"><button class="btn btn--linha" type="submit">Sair</button></form>
       </div>
     </header>
@@ -222,6 +223,7 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
                   <tr data-nome={row.pessoas.map((p) => p.nome).concat(row.nome).join(' ').toLowerCase()}>
                     <td data-l="Nome">
                       <b>{row.nome}</b>
+                      {row.convite_nome && <span class="origem" title="Respondeu pelo link pessoal">convite: {row.convite_nome}</span>}
                     </td>
                     <td data-l="Vai?">
                       <span class={`tag ${row.vai ? 'tag--sim' : 'tag--nao'}`}>{row.vai ? 'Sim' : 'Não'}</span>
@@ -259,6 +261,11 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
                     </td>
                     <td data-l="Data" class="mute">
                       {fmtData.format(new Date(row.criado_em))}
+                      {row.atualizado_em && (
+                        <span class="alterada" title={`Alterada a ${fmtData.format(new Date(row.atualizado_em))}`}>
+                          alterada
+                        </span>
+                      )}
                       {!row.email_enviado && <span class="sem-email" title="O email desta resposta não foi enviado">sem email</span>}
                     </td>
                     <td>
@@ -349,6 +356,7 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
   .acoes {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
   }
   .acoes form {
     margin: 0;
@@ -639,6 +647,20 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
   }
   .apagar {
     margin: 0;
+  }
+  .origem {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--oliva);
+  }
+  .alterada {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.72rem;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: #dcebf1;
+    color: #2f5868;
   }
   .sem-email {
     display: inline-block;
