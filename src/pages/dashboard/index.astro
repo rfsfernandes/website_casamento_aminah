@@ -13,7 +13,8 @@ const DIA = 86_400_000;
 const hoje = Date.now();
 const diasPrazo = Math.ceil((Date.parse(RSVP_FECHA_EM) - hoje) / DIA);
 const fechado = rsvpFechado(hoje);
-const diasCasamento = Math.ceil((Date.UTC(2027, 8, 5, 15) - hoje) / DIA);
+// 15h15 em Lisboa (UTC+1 em setembro).
+const diasCasamento = Math.ceil((Date.UTC(2027, 8, 5, 14, 15) - hoje) / DIA);
 
 const maxDia = Math.max(1, ...s.porDia.map((d) => d.sim + d.nao));
 const fmtData = new Intl.DateTimeFormat('pt-PT', {
