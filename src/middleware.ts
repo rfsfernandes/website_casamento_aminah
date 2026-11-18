@@ -29,7 +29,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   res.headers.set('X-Content-Type-Options', 'nosniff');
   res.headers.set('X-Frame-Options', 'DENY');
   if (!res.headers.has('Referrer-Policy')) res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  if (isDashboard || isAdminApi || path.startsWith('/c/') || path.startsWith('/r/')) {
+  if (isDashboard || isAdminApi || path.startsWith('/r/')) {
     res.headers.set('Cache-Control', 'no-store');
     res.headers.set('X-Robots-Tag', 'noindex');
   }

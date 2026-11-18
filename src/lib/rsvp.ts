@@ -55,3 +55,10 @@ export function interpretarRestricao(escolha: string, texto: string): Restricao 
   if (escolha === 'nao') return { restricao: 0, qual: '' };
   return { restricao: null, qual: '' };
 }
+
+/** Email opcional de quem responde: null se vazio, false se não parecer um email. */
+export function limparEmail(v: unknown): string | null | false {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (!s) return null;
+  return s.length <= 200 && /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(s) ? s : false;
+}

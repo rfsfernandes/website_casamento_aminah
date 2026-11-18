@@ -14,7 +14,7 @@ export const GET: APIRoute = async () => {
     return `"${s.replace(/"/g, '""')}"`;
   };
   // Uma linha por pessoa: dá para filtrar no Excel por restrições ou contar lugares.
-  const header = ['Data', 'Resposta de', 'Convite', 'Vai', 'Pessoa', 'Tipo', 'Idade', 'Restrição alimentar', 'Qual'];
+  const header = ['Data', 'Resposta de', 'Vai', 'Pessoa', 'Tipo', 'Idade', 'Restrição alimentar', 'Qual'];
   const lines = rows
     .slice()
     .reverse()
@@ -23,7 +23,6 @@ export const GET: APIRoute = async () => {
         ? r.pessoas.map((p) => [
             r.criado_em,
             r.nome,
-            r.convite_nome ?? '',
             'Sim',
             p.nome,
             p.ordem === 0 ? 'Convidado' : `Acompanhante ${p.ordem}`,
@@ -31,7 +30,7 @@ export const GET: APIRoute = async () => {
             p.restricao === 1 ? 'Sim' : p.restricao === 0 ? 'Não' : '',
             p.restricao_qual,
           ])
-        : [[r.criado_em, r.nome, r.convite_nome ?? '', 'Não', r.nome, 'Convidado', '', '', '']],
+        : [[r.criado_em, r.nome, 'Não', r.nome, 'Convidado', '', '', '']],
     )
     .map((cols) => cols.map(cell).join(';'));
   // BOM + ";" para abrir bem no Excel em português.

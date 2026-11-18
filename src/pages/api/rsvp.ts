@@ -1,7 +1,6 @@
 import type { APIRoute } from 'astro';
 import { waitUntil } from 'cloudflare:workers';
 import {
-  findRsvpByConvite,
   findRsvpByEdicao,
   insertRsvp,
   markEmailSent,
@@ -10,10 +9,9 @@ import {
   type Rsvp,
   type RsvpInput,
 } from '../../lib/db';
-import { IDADE_ADULTO, MAX_ACOMPANHANTES, idadeValida, interpretarRestricao, rsvpFechado } from '../../lib/rsvp';
+import { IDADE_ADULTO, MAX_ACOMPANHANTES, idadeValida, interpretarRestricao, limparEmail, rsvpFechado } from '../../lib/rsvp';
 import { enviarConfirmacao, sendRsvpEmail } from '../../lib/email';
 import { temAcesso } from '../../lib/acesso';
-import { lerConvite, limparEmail, type Convite } from '../../lib/convites';
 import { ipDe, permitir, sha256, tokenAleatorio } from '../../lib/seguranca';
 
 export const prerender = false;
@@ -22,10 +20,9 @@ const clean = (v: FormDataEntryValue | null, max: number) =>
   (typeof v === 'string' ? v : '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 /**
- * Grava uma resposta. Há três caminhos:
- * - `convite`: link pessoal (/c/<id>). Uma resposta por convite; responder outra vez altera-a.
- * - `edicao`: link de alteração (/r/<token>) que recebe quem respondeu com o código.
- * - nenhum: resposta nova pelo convite impresso (precisa do código, se estiver definido).
+ * Grava uma resposta:
+ * - com `edicao`: altera a resposta desse link (/r/<token>, que o convidado recebe ao responder);
+ * - sem: resposta nova (precisa do código do convite, se estiver definido).
  */
 export const POST: APIRoute = async ({ request, redirect, cookies, url }) => {
   const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
@@ -54,20 +51,11 @@ export const POST: APIRoute = async ({ request, redirect, cookies, url }) => {
   if (!(await permitir(`rsvp:${ipDe(request)}`, 12, 600)))
     return reply(429, { ok: false, error: 'Demasiadas respostas seguidas. Espera uns minutos e tenta de novo.' });
 
-  // De onde vem a resposta.
-  const conviteId = clean(form.get('convite'), 60);
+  // Resposta nova ou alteração.
   const edicao = clean(form.get('edicao'), 60);
-  let convite: Convite | null = null;
   let existente: Rsvp | null = null;
   let maxAcomp = MAX_ACOMPANHANTES;
-  if (conviteId) {
-    convite = await lerConvite(conviteId);
-    if (!convite || convite.desativado_em)
-      return reply(403, { ok: false, error: 'Este convite já não está ativo. Fala com a Aminah ou com o Luís.' });
-    pagina = `/c/${convite.id}`;
-    maxAcomp = convite.lugares - 1;
-    existente = await findRsvpByConvite(convite.id);
-  } else if (edicao) {
+  if (edicao) {
     existente = /^[A-Za-z0-9_-]{16,60}$/.test(edicao) ? await findRsvpByEdicao(await sha256(edicao)) : null;
     if (!existente) return reply(404, { ok: false, error: 'Este link já não é válido. Envia uma resposta nova.', pagina: '/' });
     pagina = `/r/${edicao}`;
@@ -82,26 +70,16 @@ export const POST: APIRoute = async ({ request, redirect, cookies, url }) => {
   if (presenca !== 'sim' && presenca !== 'nao')
     return reply(400, { ok: false, error: 'Diz-nos se contamos contigo.', campo: 'presenca' });
 
-  // Email opcional, só para quem responde com o código (os convites pessoais já são o link de alteração).
-  let email: string | null = null;
-  if (!convite) {
-    const e = limparEmail(form.get('email'));
-    if (e === false) return reply(400, { ok: false, error: 'Esse email não parece certo.', campo: 'email' });
-    email = e;
-  }
+  // Email opcional: recebe uma cópia da resposta e o link para a alterar.
+  const email = limparEmail(form.get('email'));
+  if (email === false) return reply(400, { ok: false, error: 'Esse email não parece certo.', campo: 'email' });
 
   const vai = presenca === 'sim';
   const pessoas: Pessoa[] = [];
   if (vai) {
     const n = Number(clean(form.get('acompanhantes'), 2) || '0');
     if (!Number.isInteger(n) || n < 0 || n > maxAcomp)
-      return reply(400, {
-        ok: false,
-        error: convite
-          ? `Este convite é para ${convite.lugares} pessoa${convite.lugares > 1 ? 's' : ''}.`
-          : 'Escolhe quantos acompanhantes trazes.',
-        campo: 'acompanhantes',
-      });
+      return reply(400, { ok: false, error: 'Escolhe quantos acompanhantes trazes.', campo: 'acompanhantes' });
 
     for (let i = 0; i <= n; i++) {
       const nomePessoa = i === 0 ? nome : clean(form.get(`acomp_${i}_nome`), 120);
@@ -128,8 +106,6 @@ export const POST: APIRoute = async ({ request, redirect, cookies, url }) => {
     if (existente) {
       id = existente.id;
       await updateRsvp(id, rsvp);
-    } else if (convite) {
-      id = await insertRsvp(rsvp, { convite_id: convite.id });
     } else {
       novoToken = tokenAleatorio();
       id = await insertRsvp(rsvp, { edicao_hash: await sha256(novoToken) });
@@ -145,7 +121,7 @@ export const POST: APIRoute = async ({ request, redirect, cookies, url }) => {
   const linkEdicao = novoToken ? `${url.origin}/r/${novoToken}` : edicao ? `${url.origin}/r/${edicao}` : null;
   waitUntil(
     Promise.all([
-      sendRsvpEmail(rsvp, alterada ? 'alterada' : 'nova', convite?.nome).then((sent) => (sent ? markEmailSent(id) : undefined)),
+      sendRsvpEmail(rsvp, alterada ? 'alterada' : 'nova').then((sent) => (sent ? markEmailSent(id) : undefined)),
       email && linkEdicao
         ? enviarConfirmacao({ para: email, nome, vai, pessoas: pessoas.length, url: linkEdicao, alterada })
         : undefined,

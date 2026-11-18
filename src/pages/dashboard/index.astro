@@ -2,10 +2,17 @@
 import Base from '../../layouts/Base.astro';
 import { computeStats, listRsvps } from '../../lib/db';
 import { RSVP_FECHA_EM, idadeCurta, idadeLabel, rsvpFechado } from '../../lib/rsvp';
+import { lerCodigo } from '../../lib/acesso';
 
 export const prerender = false;
 
-const rows = await listRsvps();
+const [rows, codigo] = await Promise.all([listRsvps(), lerCodigo()]);
+const origem = Astro.url.origin;
+const msgCodigo = {
+  guardado: 'Código guardado.',
+  removido: 'Código removido: o convite está aberto a quem tiver o link.',
+  invalido: 'O código tem de ter entre 4 e 24 letras ou números.',
+}[Astro.url.searchParams.get('codigo') ?? ''];
 const s = computeStats(rows);
 const pct = (n: number) => (s.respostas ? Math.round((n / s.respostas) * 100) : 0);
 
@@ -40,13 +47,13 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
         <h1>Respostas ao RSVP</h1>
       </div>
       <div class="acoes">
-        <a class="btn" href="/dashboard/convidados">Convidados</a>
-        <a class="btn btn--linha" href="/dashboard/respostas.csv">Exportar CSV</a>
+        <a class="btn" href="/dashboard/respostas.csv">Exportar CSV</a>
         <form method="post" action="/dashboard/logout"><button class="btn btn--linha" type="submit">Sair</button></form>
       </div>
     </header>
 
     {apagado && <p class="aviso" role="status">Resposta apagada.</p>}
+    {msgCodigo && <p class="aviso" role="status">{msgCodigo}</p>}
 
     <section class="kpis" aria-label="Resumo">
       <div class="kpi kpi--destaque">
@@ -77,6 +84,65 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
         <span class="kpi__n">{fechado ? '✓' : diasPrazo}</span>
         <span class="kpi__l">{fechado ? 'RSVP encerrado' : 'dias até ao prazo'}</span>
         <span class="kpi__s">15 jul 2027 · casamento em {Math.max(0, diasCasamento)} dias</span>
+      </div>
+    </section>
+
+    <section class="painel codigo-painel" id="codigo">
+      <div>
+        <h2>Código do convite</h2>
+        {
+          codigo ? (
+            <>
+              <p class="codigo">{codigo}</p>
+              <p class="mute pequeno">
+                Quem abrir o site (ex.: pelo QR code) tem de escrever este código. Define-o antes de imprimir e não o mudes
+                depois: o código antigo deixa de funcionar.
+              </p>
+            </>
+          ) : (
+            <p class="aviso aviso--alerta">
+              Ainda sem código: o convite está aberto a quem tiver o link. Escolhe o código que vai impresso no convite.
+            </p>
+          )
+        }
+      </div>
+      <div>
+        <form method="post" action="/api/admin/codigo" class="codigo-form">
+          <label class="sr-only" for="novo-codigo">{codigo ? 'Novo código' : 'Código'}</label>
+          <input
+            id="novo-codigo"
+            name="codigo"
+            type="text"
+            placeholder={codigo ? 'Novo código' : 'Ex.: SERRALHEIRA'}
+            minlength="4"
+            maxlength="24"
+            autocomplete="off"
+            required
+          />
+          <button
+            class="btn"
+            type="submit"
+            data-confirmar={codigo ? 'Mudar o código? Quem tem o convite impresso com o código antigo deixa de conseguir entrar.' : undefined}
+          >
+            {codigo ? 'Mudar' : 'Guardar'}
+          </button>
+        </form>
+        <p class="mute pequeno">Letras e números (4 a 24); maiúsculas, espaços e acentos não contam.</p>
+        {
+          codigo && (
+            <>
+              <p class="mute pequeno">
+                Link que já leva o código (para um QR que entra direto): <code>{`${origem}/?c=${codigo}`}</code>
+              </p>
+              <form method="post" action="/api/admin/codigo">
+                <input type="hidden" name="remover" value="1" />
+                <button class="link" type="submit" data-confirmar="Remover o código? O convite fica aberto a quem tiver o link.">
+                  Remover código
+                </button>
+              </form>
+            </>
+          )
+        }
       </div>
     </section>
 
@@ -224,7 +290,6 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
                   <tr data-nome={row.pessoas.map((p) => p.nome).concat(row.nome).join(' ').toLowerCase()}>
                     <td data-l="Nome">
                       <b>{row.nome}</b>
-                      {row.convite_nome && <span class="origem" title="Respondeu pelo link pessoal">convite: {row.convite_nome}</span>}
                     </td>
                     <td data-l="Vai?">
                       <span class={`tag ${row.vai ? 'tag--sim' : 'tag--nao'}`}>{row.vai ? 'Sim' : 'Não'}</span>
@@ -300,6 +365,12 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
       tr.hidden = !!q && !(tr.dataset.nome ?? '').includes(q);
     });
   });
+  // Confirmação antes de mudar ou remover o código.
+  document.querySelectorAll<HTMLElement>('[data-confirmar]').forEach((b) =>
+    b.closest('form')!.addEventListener('submit', (e) => {
+      if (!confirm(b.dataset.confirmar!)) e.preventDefault();
+    }),
+  );
   document.querySelectorAll<HTMLFormElement>('form.apagar').forEach((f) =>
     f.addEventListener('submit', (e) => {
       if (!confirm(`Apagar a resposta de ${f.dataset.nome}? Não dá para desfazer.`)) e.preventDefault();
@@ -649,10 +720,50 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
   .apagar {
     margin: 0;
   }
-  .origem {
-    display: block;
-    font-size: 0.8rem;
-    color: var(--oliva);
+  .codigo-painel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+    margin-bottom: 16px;
+  }
+  .codigo-painel p {
+    margin: 0 0 8px;
+  }
+  .codigo {
+    font-family: var(--f-caps);
+    font-size: 2rem;
+    letter-spacing: 0.18em;
+    word-break: break-all;
+  }
+  .codigo-form {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 6px;
+  }
+  .codigo-form input {
+    font: inherit;
+    font-size: 0.95rem;
+    padding: 9px 12px;
+    border: 1px solid #d9cfbd;
+    border-radius: 999px;
+    min-width: 0;
+    flex: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .pequeno {
+    font-size: 0.85rem;
+  }
+  code {
+    font-size: 0.85rem;
+    background: #f4f1ea;
+    padding: 2px 6px;
+    border-radius: 4px;
+    word-break: break-all;
+  }
+  .aviso--alerta {
+    background: #f6e3cf;
+    color: #7a3d12;
   }
   .alterada {
     display: inline-block;
@@ -691,7 +802,8 @@ const pctR = (n: number) => (respRestr ? Math.round((n / respRestr) * 100) : 0);
     .kpis {
       grid-template-columns: repeat(2, 1fr);
     }
-    .grelha {
+    .grelha,
+    .codigo-painel {
       grid-template-columns: 1fr;
     }
     .kpi--destaque,

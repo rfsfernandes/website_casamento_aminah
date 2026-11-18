@@ -2,7 +2,6 @@ import { env } from 'cloudflare:workers';
 import { textoRestricao, type RsvpInput } from './db';
 import { idadeLabel } from './rsvp';
 import { devolver, reservar } from './seguranca';
-import { LINHA_LINK, linhaLugares, saudacao } from './convites';
 
 type MailEnv = Env & { RESEND_API_KEY?: string; RSVP_TO_EMAIL?: string };
 const e = () => env as MailEnv;
@@ -18,14 +17,14 @@ interface Mail {
 }
 
 /**
- * Emails para convidados (convites e confirmações) por dia. O plano gratuito do Resend dá 100 por dia;
+ * Cópias das respostas enviadas a convidados, por dia. O plano gratuito do Resend dá 100 por dia;
  * ficam 20 de margem para os emails de cada resposta que chegam aos noivos.
  */
 export const LIMITE_EMAILS_DIA = 80;
 const CHAVE_QUOTA = 'emails-convidados';
 const DIA = 86_400;
 
-export const resendConfigurado = () => !!e().RESEND_API_KEY;
+const resendConfigurado = () => !!e().RESEND_API_KEY;
 
 /** Envia um ou vários emails (lote). Devolve false (sem lançar) se falhar ou não estiver configurado. */
 async function enviar(mails: Mail[]): Promise<boolean> {
@@ -76,14 +75,13 @@ function moldura(o: { titulo: string; paragrafos: string[]; botao?: { texto: str
 export type TipoResposta = 'nova' | 'alterada' | 'apagada';
 
 /** Avisa os noivos de uma resposta nova, alterada ou apagada. */
-export async function sendRsvpEmail(r: RsvpInput, tipo: TipoResposta = 'nova', convite?: string | null): Promise<boolean> {
+export async function sendRsvpEmail(r: RsvpInput, tipo: TipoResposta = 'nova'): Promise<boolean> {
   if (!e().RSVP_TO_EMAIL) {
     console.warn('RSVP_TO_EMAIL não definido: email não enviado.');
     return false;
   }
   const estado = tipo === 'apagada' ? 'Resposta apagada' : r.vai ? 'Vai ✅' : 'Não vai ❌';
   const linhas: [string, string][] = [['Nome', r.nome]];
-  if (convite) linhas.push(['Convite', convite]);
   if (tipo !== 'apagada') linhas.push(['Presença', r.vai ? 'Claro que sim!!!' : 'Infelizmente não vou.']);
   if (tipo !== 'apagada' && r.vai) {
     const acomp = r.pessoas.slice(1);
@@ -113,7 +111,7 @@ export async function sendRsvpEmail(r: RsvpInput, tipo: TipoResposta = 'nova', c
   return enviar([{ to: [e().RSVP_TO_EMAIL!], subject: `${prefixo}: ${r.nome} — ${estado}${grupo}`, html, text }]);
 }
 
-/** Cópia da resposta para o convidado, com o link para a alterar (quem respondeu com o código e deu o email). */
+/** Cópia da resposta para o convidado que deu o email, com o link para a alterar. */
 export async function enviarConfirmacao(o: { para: string; nome: string; vai: boolean; pessoas: number; url: string; alterada: boolean }) {
   if (!resendConfigurado()) return false;
   if (!(await reservar(CHAVE_QUOTA, LIMITE_EMAILS_DIA, DIA, 1))) return false;
@@ -134,40 +132,4 @@ export async function enviarConfirmacao(o: { para: string; nome: string; vai: bo
   const ok = await enviar([{ to: [o.para], subject: 'A tua resposta ao convite da Aminah e do Luís', ...m }]);
   if (!ok) await devolver(CHAVE_QUOTA, 1);
   return ok;
-}
-
-export interface Envio {
-  id: string;
-  nome: string;
-  lugares: number;
-  email: string;
-  url: string;
-}
-
-/**
- * Envia os convites pessoais por email, num só lote. Respeita a quota diária: o que não couber
- * fica por enviar (e aparece assim no dashboard). Sem RESEND_API_KEY (em local) nada sai e o
- * resultado diz "simulado".
- */
-export async function enviarConvites(lista: Envio[], mensagem: string) {
-  if (!lista.length) return { enviados: [] as string[], ficaram: 0, simulado: false };
-  const simulado = !resendConfigurado();
-  const dado = simulado ? lista.length : await reservar(CHAVE_QUOTA, LIMITE_EMAILS_DIA, DIA, lista.length);
-  const lote = lista.slice(0, dado);
-  if (lote.length && !simulado) {
-    const mails = lote.map((c) => {
-      const m = moldura({
-        titulo: saudacao(c.nome),
-        paragrafos: [mensagem, linhaLugares(c.lugares), LINHA_LINK].filter(Boolean),
-        botao: { texto: 'Abrir o convite', url: c.url },
-        rodape: 'Este link é pessoal: por favor não o reencaminhes.',
-      });
-      return { to: [c.email], subject: 'Convite: casamento da Aminah e do Luís', ...m };
-    });
-    if (!(await enviar(mails))) {
-      await devolver(CHAVE_QUOTA, lote.length);
-      throw new Error('Não foi possível enviar os emails. Tenta outra vez daqui a pouco.');
-    }
-  }
-  return { enviados: lote.map((c) => c.id), ficaram: lista.length - lote.length, simulado };
 }
